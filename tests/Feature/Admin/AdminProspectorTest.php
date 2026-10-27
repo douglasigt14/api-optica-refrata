@@ -144,7 +144,7 @@ class AdminProspectorTest extends TestCase
 
         $this->postJson('/api/login', ['phone_number' => $prospector->phone_number, 'password' => 'password'])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['phone_number' => 'Seu cadastro está bloqueado. Fale com a equipe Perfeita Visão.']);
+            ->assertJsonValidationErrors(['phone_number' => 'Seu cadastro está bloqueado. Fale com a equipe da ótica.']);
 
         Passport::actingAs($user->fresh());
         $this->postJson('/api/leads', ['name' => 'X', 'phone_number' => '88911112222'])->assertForbidden();

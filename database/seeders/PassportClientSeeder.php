@@ -17,7 +17,7 @@ class PassportClientSeeder extends Seeder
         try {
             $clients->personalAccessClient('users');
         } catch (RuntimeException) {
-            $clients->createPersonalAccessGrantClient('App Perfeita Visão', 'users');
+            $clients->createPersonalAccessGrantClient('Refrata Ótica', 'users');
         }
     }
 }

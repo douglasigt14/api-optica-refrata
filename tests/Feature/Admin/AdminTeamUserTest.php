@@ -34,12 +34,12 @@ class AdminTeamUserTest extends TestCase
     {
         $id = $this->postJson('/api/admin/users', [
             'name' => 'Bia',
-            'email' => 'Bia@PerfeitaVisao.com',
+            'email' => 'Bia@Refrata.com',
             'role' => 'field_agent',
             'password' => 'segredo123',
         ])
             ->assertCreated()
-            ->assertJsonPath('data.email', 'bia@perfeitavisao.com')
+            ->assertJsonPath('data.email', 'bia@refrata.com')
             ->json('data.id');
 
         $this->patchJson("/api/admin/users/{$id}", ['role' => 'factory', 'password' => ''])
@@ -47,7 +47,7 @@ class AdminTeamUserTest extends TestCase
             ->assertJsonPath('data.role', 'factory');
         $this->assertTrue(Hash::check('segredo123', User::find($id)->password));
 
-        $this->postJson('/api/admin/users', ['name' => 'X', 'email' => 'bia@perfeitavisao.com', 'role' => 'chefe', 'password' => '123'])
+        $this->postJson('/api/admin/users', ['name' => 'X', 'email' => 'bia@refrata.com', 'role' => 'chefe', 'password' => '123'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['email' => 'Já existe um usuário com este e-mail.', 'role', 'password']);
     }

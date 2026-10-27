@@ -21,9 +21,9 @@ class AdminAuthTest extends TestCase
 
     public function test_team_member_logs_in_with_email_and_password(): void
     {
-        $user = User::factory()->team(UserRole::FieldAgent)->create(['email' => 'ana@perfeitavisao.com']);
+        $user = User::factory()->team(UserRole::FieldAgent)->create(['email' => 'ana@refrata.com']);
 
-        $this->postJson('/api/admin/login', ['email' => ' ANA@perfeitavisao.com ', 'password' => 'password'])
+        $this->postJson('/api/admin/login', ['email' => ' ANA@refrata.com ', 'password' => 'password'])
             ->assertOk()
             ->assertJsonStructure(['access_token', 'expires_at', 'user' => ['id', 'name', 'email', 'role', 'role_label']])
             ->assertJsonPath('user.id', $user->id)
@@ -33,10 +33,10 @@ class AdminAuthTest extends TestCase
 
     public function test_wrong_password_or_partner_cannot_log_in(): void
     {
-        User::factory()->team()->create(['email' => 'ana@perfeitavisao.com']);
+        User::factory()->team()->create(['email' => 'ana@refrata.com']);
         $partner = User::factory()->create(['email' => 'parceiro@exemplo.com']);
 
-        $this->postJson('/api/admin/login', ['email' => 'ana@perfeitavisao.com', 'password' => 'errada123'])
+        $this->postJson('/api/admin/login', ['email' => 'ana@refrata.com', 'password' => 'errada123'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['email' => 'E-mail ou senha incorretos.']);
 

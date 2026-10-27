@@ -1,6 +1,6 @@
 @AGENTS.md
 
-API Laravel 13 do Projeto Perfeita Visão. Auth com Laravel Passport (guard `api`).
+API Laravel 13 da Refrata Ótica (painel da equipe e app de indicações; empresa Otica Exclusive). Auth com Laravel Passport (guard `api`).
 
 A documentação do projeto (estrutura de dados, rotas da API e decisões) fica no handoff do app — leia antes de começar e mantenha atualizado:
 

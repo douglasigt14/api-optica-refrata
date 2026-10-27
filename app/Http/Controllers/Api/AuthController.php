@@ -48,7 +48,7 @@ class AuthController extends Controller
 
         if ($user->prospector?->isBlocked()) {
             throw ValidationException::withMessages([
-                'phone_number' => 'Seu cadastro está bloqueado. Fale com a equipe Perfeita Visão.',
+                'phone_number' => 'Seu cadastro está bloqueado. Fale com a equipe da ótica.',
             ]);
         }
 

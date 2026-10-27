@@ -77,7 +77,10 @@ class AdminAuthTest extends TestCase
         $this->artisan('admin:create', ['--name' => 'Douglas', '--email' => 'Douglas@Exemplo.com', '--password' => 'segredo123'])
             ->assertSuccessful();
 
-        $this->assertDatabaseHas('users', ['email' => 'douglas@exemplo.com', 'role' => 'admin', 'phone_number' => null]);
+        $admin = User::firstWhere('email', 'douglas@exemplo.com');
+        $this->assertNull($admin->phone_number);
+        $this->assertSame(UserRole::Admin, $admin->roleIn($this->company));
+        $this->assertSame($this->company->group_id, $admin->group_id);
 
         $this->artisan('admin:create', ['--name' => 'Outro', '--email' => 'douglas@exemplo.com', '--password' => 'segredo123'])
             ->assertFailed();

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\LeadStage;
 use App\Enums\LeadStatusColor;
+use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['name', 'partner_name', 'stage', 'color', 'sort_order', 'is_default', 'active'])]
 class LeadStatus extends Model
 {
+    use BelongsToCompany;
+
     /**
      * Get the attributes that should be cast.
      *

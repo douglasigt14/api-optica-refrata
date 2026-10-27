@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Enums\CityVisitStatus;
+use App\Support\CurrentCompany;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -20,7 +21,7 @@ class CityVisitRequest extends FormRequest
         $required = $this->isMethod('post') ? 'required' : 'sometimes';
 
         return [
-            'city_id' => [$required, 'integer', Rule::exists('cities', 'id')->where('active', true)],
+            'city_id' => [$required, 'integer', CurrentCompany::servedCity()],
             'title' => [$required, 'string', 'max:255'],
             'visit_date' => [$required, 'date_format:Y-m-d'],
             'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:'.$this->startDate()],

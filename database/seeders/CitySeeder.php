@@ -9,16 +9,9 @@ use Illuminate\Support\Facades\DB;
 class CitySeeder extends Seeder
 {
     /**
-     * Cidades onde a empresa já atende — as únicas que entram ativas.
-     */
-    private const ACTIVE = [
-        'Aracati', 'Aracoiaba', 'Assaré', 'Baturité', 'Campos Sales', 'Cariús', 'Iguatu', 'Morada Nova',
-        'Nova Olinda', 'Orós', 'Santana do Cariri', 'Várzea Alegre',
-    ];
-
-    /**
      * Todos os municípios do Brasil (IBGE), agrupados por UF em data/cities.json
-     * como [código IBGE, nome]. Cidades que já existem só recebem o código IBGE.
+     * como [código IBGE, nome]. Cidades que já existem só recebem o código IBGE. As que cada ótica atende
+     * ficam em `company_city` (tela Cidades atendidas do painel).
      */
     public function run(): void
     {
@@ -37,7 +30,6 @@ class CitySeeder extends Seeder
                 City::upsert($chunk, ['name', 'state'], ['ibge_code']);
             }
 
-            City::where('state', 'CE')->whereIn('name', self::ACTIVE)->update(['active' => true]);
         });
     }
 }

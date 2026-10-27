@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LeadStage;
+use App\Models\Concerns\BelongsToCompany;
 use Database\Factories\ProspectorFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Prospector extends Model
 {
     /** @use HasFactory<ProspectorFactory> */
-    use HasFactory;
+    use BelongsToCompany, HasFactory;
 
     /**
      * Get the attributes that should be cast.

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\Prospector;
+use App\Support\CurrentCompany;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -33,7 +34,7 @@ class ProspectorRequest extends FormRequest
                 Rule::unique('prospectors', 'phone_number')->ignore($prospector),
                 Rule::unique('users', 'phone_number')->ignore($prospector?->user),
             ],
-            'city_id' => [$required, 'integer', Rule::exists('cities', 'id')->where('active', true)],
+            'city_id' => [$required, 'integer', CurrentCompany::servedCity()],
             'pix_key' => [$required, 'string', 'max:255'],
             'instagram_handle' => ['nullable', 'string', 'max:30'],
             'trusted' => ['sometimes', 'boolean'],

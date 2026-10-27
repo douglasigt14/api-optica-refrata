@@ -5,10 +5,10 @@ namespace App\Http\Requests\Admin;
 use App\Enums\LeadStage;
 use App\Models\Lead;
 use App\Models\LeadStatus;
+use App\Support\CurrentCompany;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * Troca manual de situação. Regras pela etapa: para ir à etapa Agendada é preciso marcar o dia
@@ -25,7 +25,7 @@ class UpdateLeadStatusRequest extends FormRequest
             'lead_status_id' => [
                 'required',
                 'integer',
-                Rule::exists('lead_statuses', 'id')->where('active', true),
+                CurrentCompany::exists('lead_statuses')->where('active', true),
                 function (string $attribute, mixed $value, Closure $fail) {
                     /** @var Lead $lead */
                     $lead = $this->route('lead');

@@ -2,21 +2,21 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\PlatformAccess;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Entrada do Console da Refrata (plataforma): `Authorization: Bearer <PLATFORM_TOKEN>`. É o token da instalação
- * (infraestrutura, não de um cliente), o mesmo no .env do Console. Vazio = desligado (503).
+ * Entrada do Console da Refrata (plataforma): `Authorization: Bearer <chave>`. A chave é da instalação (não de um
+ * cliente) e fica no banco (`PlatformAccess`, pareada pela tela Módulos do Console). Sem pareamento = 503.
  */
 class EnsurePlatform
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $token = (string) config('services.platform.token');
-        abort_if($token === '', 503, 'Plataforma não configurada (PLATFORM_TOKEN).');
-        abort_unless(hash_equals($token, (string) $request->bearerToken()), 401, 'Token da plataforma inválido.');
+        abort_if(PlatformAccess::current() === null, 503, 'Sistema ainda não pareado com o Console.');
+        abort_unless(PlatformAccess::accepts((string) $request->bearerToken()), 401, 'Token da plataforma inválido.');
 
         return $next($request);
     }

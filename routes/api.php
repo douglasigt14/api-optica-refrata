@@ -6,13 +6,20 @@ use App\Http\Controllers\Api\CityController;
 use App\Http\Controllers\Api\CityVisitController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PlatformController;
+use App\Http\Controllers\Api\PlatformPairingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/cities', [CityController::class, 'index']);
 Route::get('/companies/{code}', [CityController::class, 'company'])->middleware('throttle:30,1');
 
 // Console da Refrata (plataforma): cria/atualiza as óticas (e o grupo delas).
+// Pareamento com o Console (tela Módulos de lá): a chave fica no banco, nunca no .env.
+Route::get('/platform/pair', [PlatformPairingController::class, 'status'])->middleware('throttle:10,1')->name('platform.pair.status');
+Route::post('/platform/pair', [PlatformPairingController::class, 'pair'])->middleware('throttle:10,1')->name('platform.pair');
+
 Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('platform.')->group(function () {
+    Route::get('/ping', [PlatformPairingController::class, 'ping'])->name('ping');
+    Route::put('/token', [PlatformPairingController::class, 'rotate'])->name('token');
     Route::put('/companies/{consoleId}', [PlatformController::class, 'upsertCompany'])->name('companies.upsert');
 });
 

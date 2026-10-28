@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CityController;
 use App\Http\Controllers\Api\CityVisitController;
+use App\Http\Controllers\Api\LabIntegrationController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\PlatformPairingController;
@@ -21,7 +22,12 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
     Route::get('/ping', [PlatformPairingController::class, 'ping'])->name('ping');
     Route::put('/token', [PlatformPairingController::class, 'rotate'])->name('token');
     Route::put('/companies/{consoleId}', [PlatformController::class, 'upsertCompany'])->name('companies.upsert');
+    Route::put('/companies/{consoleId}/labs/{labConsoleId}', [PlatformController::class, 'labConnection'])->name('companies.lab');
+    Route::put('/companies/{consoleId}/labs/{labConsoleId}/token', [PlatformController::class, 'labToken'])->name('companies.lab-token');
 });
+
+// Aviso de situação dos laboratórios do grupo (passo 3 do roteiro). Chave gravada pelo Console.
+Route::post('/integration/lab-orders/status', [LabIntegrationController::class, 'status'])->middleware(['lab-integration', 'throttle:120,1'])->name('integration.lab-orders.status');
 
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -73,6 +79,17 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::patch('/leads/{lead}/schedule', [Admin\LeadController::class, 'schedule'])->name('leads.schedule');
             Route::patch('/leads/{lead}/status', [Admin\LeadController::class, 'updateStatus'])->name('leads.status');
             Route::post('/leads/{lead}/contacts', [Admin\LeadController::class, 'storeContact'])->name('leads.contacts.store');
+
+            // Clientes e pedidos aos laboratórios do grupo (passo 3 do roteiro).
+            Route::apiResource('clients', Admin\ClientController::class)->except('destroy');
+            Route::get('/labs', [Admin\LabOrderController::class, 'labs'])->name('labs.index');
+            Route::get('/labs/{labConnection}/catalog', [Admin\LabOrderController::class, 'catalog'])->name('labs.catalog');
+            Route::get('/lab-orders', [Admin\LabOrderController::class, 'index'])->name('lab-orders.index');
+            Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
+            Route::get('/lab-orders/{labOrder}', [Admin\LabOrderController::class, 'show'])->name('lab-orders.show');
+            Route::post('/lab-orders/{labOrder}/send', [Admin\LabOrderController::class, 'send'])->name('lab-orders.send');
+            Route::post('/lab-orders/{labOrder}/refresh', [Admin\LabOrderController::class, 'refresh'])->name('lab-orders.refresh');
+            Route::post('/lab-orders/{labOrder}/cancel', [Admin\LabOrderController::class, 'cancel'])->name('lab-orders.cancel');
         });
 
         Route::middleware('role:admin')->group(function () {

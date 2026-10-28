@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureLabIntegration;
 use App\Http\Middleware\EnsurePlatform;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\UseCompany;
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'platform' => EnsurePlatform::class,
+            'lab-integration' => EnsureLabIntegration::class,
             'role' => EnsureUserHasRole::class,
             'use-company' => UseCompany::class,
         ]);

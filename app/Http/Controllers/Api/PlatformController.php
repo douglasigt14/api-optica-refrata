@@ -5,10 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\Group;
+use App\Models\LabConnection;
+use App\Services\Laboratory;
+use App\Support\CurrentCompany;
 use App\Support\DefaultLeadStatuses;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 /**
  * O que o Console da Refrata faz na ótica (token da plataforma): criar/atualizar a ótica (e o grupo dela). A que já
@@ -70,6 +76,48 @@ class PlatformController extends Controller
             'invite_code' => $company->invite_code,
             'created' => $created,
         ]], $created ? 201 : 200);
+    }
+
+    /**
+     * Liga um laboratório do grupo a esta ótica (passo 3; o Console faz as duas pontas): cria ou atualiza a ligação pelo ID
+     * da empresa laboratório e gera a chave com que o laboratório avisa a situação das OS (a anterior deixa de valer).
+     * Devolve a chave uma vez só; o Console grava no laboratório.
+     */
+    public function labConnection(Request $request, string $consoleId, string $labConsoleId): JsonResponse
+    {
+        $company = Company::where('console_id', $consoleId)->firstOrFail();
+        $name = $request->validate(['name' => ['required', 'string', 'max:255']])['name'];
+
+        return app(CurrentCompany::class)->within($company, function () use ($labConsoleId, $name) {
+            $token = 'roi_'.Str::random(60);
+            LabConnection::updateOrCreate(['lab_console_id' => $labConsoleId], ['name' => $name, 'inbound_token_hash' => LabConnection::hash($token)]);
+
+            return response()->json(['data' => ['inbound_token' => $token]]);
+        });
+    }
+
+    /**
+     * Grava o endereço do laboratório e a chave que a ótica usa lá (gerada pelo laboratório) e testa pelo catálogo.
+     */
+    public function labToken(Request $request, Laboratory $laboratory, string $consoleId, string $labConsoleId): JsonResponse
+    {
+        $company = Company::where('console_id', $consoleId)->firstOrFail();
+        $data = $request->validate([
+            'url' => ['required', 'url:http,https', 'max:255'],
+            'token' => ['required', 'string', 'min:20', 'max:200'],
+        ]);
+
+        return app(CurrentCompany::class)->within($company, function () use ($data, $labConsoleId, $laboratory) {
+            $lab = LabConnection::where('lab_console_id', $labConsoleId)->firstOrFail();
+            $lab->update(['url' => rtrim($data['url'], '/'), 'token' => $data['token'], 'connected_at' => now()]);
+            try {
+                $catalog = $laboratory->catalog($lab);
+            } catch (RuntimeException $error) {
+                throw ValidationException::withMessages(['connection' => $error->getMessage()]);
+            }
+
+            return response()->json(['data' => ['connected' => true, 'treatments' => count($catalog['treatments'] ?? [])]]);
+        });
     }
 
     /**

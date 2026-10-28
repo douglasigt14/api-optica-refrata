@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Company;
 use App\Models\Group;
 use App\Models\LeadStatus;
+use App\Models\PlatformAccess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -20,7 +21,7 @@ class PlatformTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['services.platform.token' => 'token-da-plataforma']);
+        PlatformAccess::create(['token_hash' => PlatformAccess::hash('token-da-plataforma'), 'paired_at' => now()]);
     }
 
     /**

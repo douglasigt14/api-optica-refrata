@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CityVisitStatus;
 use App\Enums\LeadStage;
+use App\Models\Concerns\BelongsToCompany;
 use Database\Factories\CityVisitFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class CityVisit extends Model
 {
     /** @use HasFactory<CityVisitFactory> */
-    use HasFactory;
+    use BelongsToCompany, HasFactory;
 
     /**
      * Concluído ou cancelado desliga sozinho o "Receber indicações" (e não deixa religar).

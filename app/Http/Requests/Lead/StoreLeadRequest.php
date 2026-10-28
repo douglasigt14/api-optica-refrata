@@ -4,10 +4,10 @@ namespace App\Http\Requests\Lead;
 
 use App\Http\Requests\Auth\NormalizesPhoneNumber;
 use App\Models\CityVisit;
+use App\Support\CurrentCompany;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreLeadRequest extends FormRequest
 {
@@ -31,7 +31,7 @@ class StoreLeadRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'phone_number' => ['required', 'digits_between:10,11'],
-            'city_id' => ['required', 'integer', Rule::exists('cities', 'id')->where('active', true)],
+            'city_id' => ['required', 'integer', CurrentCompany::servedCity()],
             'city_visit_id' => [
                 'required',
                 'integer',

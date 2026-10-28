@@ -3,8 +3,10 @@
 namespace Database\Factories;
 
 use App\Enums\UserRole;
+use App\Models\Company;
 use App\Models\Prospector;
 use App\Models\User;
+use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -35,16 +37,36 @@ class UserFactory extends Factory
     }
 
     /**
-     * Usuário da equipe interna (sem prospector, entra por e-mail).
+     * Usuário da equipe interna (sem prospector, entra por e-mail), com o papel na ótica escolhida (a dos testes).
      */
     public function team(UserRole $role = UserRole::Admin): static
     {
         return $this->state(fn () => [
             'prospector_id' => null,
             'phone_number' => null,
+            'group_id' => app(CurrentCompany::class)->require()->group_id,
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
-            'role' => $role,
-        ]);
+        ])->afterCreating(function (User $user) use ($role) {
+            $user->companies()->syncWithoutDetaching([app(CurrentCompany::class)->require()->id => ['role' => $role->value]]);
+            $user->unsetRelation('companies');
+        });
+    }
+
+    /**
+     * Da equipe de outra ótica (só dela), com o papel.
+     */
+    public function teamOf(Company $company, UserRole $role = UserRole::Admin): static
+    {
+        return $this->state(fn () => [
+            'prospector_id' => null,
+            'phone_number' => null,
+            'group_id' => $company->group_id,
+            'name' => fake()->name(),
+            'email' => fake()->unique()->safeEmail(),
+        ])->afterCreating(function (User $user) use ($company, $role) {
+            $user->companies()->sync([$company->id => ['role' => $role->value]]);
+            $user->unsetRelation('companies');
+        });
     }
 }

@@ -27,6 +27,8 @@ class UserResource extends JsonResource
                 'pix_key' => $this->prospector->pix_key,
                 'instagram_handle' => $this->prospector->instagram_handle,
                 'city' => $this->prospector->city->only(['id', 'name', 'state']),
+                // A ótica do parceiro (nome no app e no menu).
+                'company' => $this->prospector->company ? ['id' => $this->prospector->company->id, 'name' => $this->prospector->company->displayName()] : null,
             ]),
         ];
     }

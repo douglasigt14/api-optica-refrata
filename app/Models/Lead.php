@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LeadStage;
+use App\Models\Concerns\BelongsToCompany;
 use Database\Factories\LeadFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Lead extends Model
 {
     /** @use HasFactory<LeadFactory> */
-    use HasFactory, SoftDeletes;
+    use BelongsToCompany, HasFactory, SoftDeletes;
 
     protected static function booted(): void
     {

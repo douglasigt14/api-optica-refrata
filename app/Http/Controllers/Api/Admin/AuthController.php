@@ -4,8 +4,9 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AdminLoginRequest;
-use App\Http\Resources\Admin\TeamUserResource;
+use App\Http\Resources\Admin\SessionUserResource;
 use App\Models\User;
+use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -19,12 +20,21 @@ class AuthController extends Controller
      */
     public function login(AdminLoginRequest $request): JsonResponse
     {
-        $user = User::where('email', $request->validated('email'))->whereNotNull('role')->first();
+        $user = User::where('email', $request->validated('email'))->whereNull('prospector_id')->first();
 
         if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
             throw ValidationException::withMessages([
                 'email' => 'E-mail ou senha incorretos.',
             ]);
+        }
+
+        // Sem ótica disponível (todas desativadas ou grupo bloqueado no Console): não entra.
+        $companies = $user->load('companies.group')->availableCompanies();
+        if ($companies->isEmpty()) {
+            throw ValidationException::withMessages(['email' => 'Acesso bloqueado. Fale com o administrador da ótica.']);
+        }
+        if ($companies->count() === 1) {
+            app(CurrentCompany::class)->set($companies->first());
         }
 
         $token = $user->createToken($request->validated('device_name') ?: 'admin');
@@ -33,13 +43,13 @@ class AuthController extends Controller
             'token_type' => 'Bearer',
             'access_token' => $token->accessToken,
             'expires_at' => $token->token->expires_at?->toIso8601String(),
-            'user' => new TeamUserResource($user),
+            'user' => new SessionUserResource($user),
         ]);
     }
 
-    public function me(Request $request): TeamUserResource
+    public function me(Request $request): SessionUserResource
     {
-        return new TeamUserResource($request->user());
+        return new SessionUserResource($request->user());
     }
 
     public function logout(Request $request): Response

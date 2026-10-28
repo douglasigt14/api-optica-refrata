@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    // Console da Refrata (plataforma): token da instalação, o mesmo OPTICA_PLATFORM_TOKEN no .env do Console.
+    'platform' => [
+        'token' => env('PLATFORM_TOKEN'),
+    ],
+
 ];

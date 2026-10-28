@@ -1,0 +1,93 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Company;
+use App\Models\Group;
+use App\Support\DefaultLeadStatuses;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * O que o Console da Refrata faz na ótica (token da plataforma): criar/atualizar a ótica (e o grupo dela). A que já
+ * existia aqui antes do Console (a Otica Exclusive) é ligada pelo CNPJ ou, no mesmo grupo, pelo nome — não duplica.
+ * Ótica nova ganha o código de convite (pelo nome) e as situações padrão das indicações.
+ */
+class PlatformController extends Controller
+{
+    /**
+     * Cria ou atualiza a ótica `consoleId`. `active` = a empresa está ativa e usa o módulo Ótica.
+     */
+    public function upsertCompany(Request $request, string $consoleId): JsonResponse
+    {
+        $data = $request->validate([
+            'group' => ['required', 'array'],
+            'group.console_id' => ['required', 'string', 'size:26'],
+            'group.name' => ['required', 'string', 'max:255'],
+            'group.blocked' => ['required', 'boolean'],
+            'name' => ['required', 'string', 'max:255'],
+            'trade_name' => ['nullable', 'string', 'max:255'],
+            'document' => ['required', 'digits:14'],
+            'active' => ['required', 'boolean'],
+        ]);
+
+        [$company, $created] = DB::transaction(function () use ($data, $consoleId) {
+            $group = $this->group($data['group']);
+            $company = Company::where('console_id', $consoleId)->first()
+                ?? Company::whereNull('console_id')->where('document', $data['document'])->first()
+                ?? Company::whereNull('console_id')->where('group_id', $group->id)
+                    ->where(fn ($q) => $q->where('name', $data['name'])->when($data['trade_name'], fn ($q, $trade) => $q->orWhere('trade_name', $trade)))
+                    ->first();
+            $created = ! $company;
+            abort_if($company && $company->group_id !== $group->id, 422, 'A empresa já é de outro grupo.');
+            $clash = Company::where('document', $data['document'])->when($company, fn ($q) => $q->whereKeyNot($company->id))->exists();
+            abort_if($clash, 422, 'Este CNPJ já é de outra ótica aqui.');
+
+            $company ??= new Company;
+            $company->fill([
+                'group_id' => $group->id,
+                'console_id' => $consoleId,
+                'name' => $data['name'],
+                'trade_name' => $data['trade_name'] ?? null,
+                'document' => $data['document'],
+                'active' => $data['active'],
+            ]);
+            $company->invite_code ??= Company::inviteCodeFor($data['trade_name'] ?? $data['name']);
+            $company->save();
+            if ($created) {
+                DefaultLeadStatuses::createFor($company);
+            }
+
+            return [$company, $created];
+        });
+
+        return response()->json(['data' => [
+            'id' => $company->id,
+            'console_id' => $company->console_id,
+            'group_id' => $company->group_id,
+            'active' => $company->active,
+            'invite_code' => $company->invite_code,
+            'created' => $created,
+        ]], $created ? 201 : 200);
+    }
+
+    /**
+     * @param  array{console_id: string, name: string, blocked: bool}  $data
+     */
+    private function group(array $data): Group
+    {
+        // Antes do Console havia um grupo só (o Grupo Royal, sem ligação): é ele.
+        $group = Group::where('console_id', $data['console_id'])->first()
+            ?? Group::whereNull('console_id')->where('name', $data['name'])->first()
+            ?? new Group;
+        $group->fill([
+            'console_id' => $data['console_id'],
+            'name' => $data['name'],
+            'blocked_at' => $data['blocked'] ? ($group->blocked_at ?? now()) : null,
+        ])->save();
+
+        return $group;
+    }
+}

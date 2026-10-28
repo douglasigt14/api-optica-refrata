@@ -18,7 +18,8 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
-     * Cadastro do prospector: cria o prospector e o usuário dele e já devolve o token.
+     * Cadastro do prospector na ótica do convite (`invite_code`, conferido no RegisterRequest, que também escolhe a ótica):
+     * cria o prospector e o usuário dele e já devolve o token.
      */
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -46,6 +47,13 @@ class AuthController extends Controller
             ]);
         }
 
+        // Ótica inativa ou grupo bloqueado no Console: nenhum parceiro dela entra.
+        if ($user->prospector && ! $user->prospector->company?->available()) {
+            throw ValidationException::withMessages([
+                'phone_number' => 'Acesso bloqueado. Fale com a equipe da ótica.',
+            ]);
+        }
+
         if ($user->prospector?->isBlocked()) {
             throw ValidationException::withMessages([
                 'phone_number' => 'Seu cadastro está bloqueado. Fale com a equipe da ótica.',
@@ -57,7 +65,7 @@ class AuthController extends Controller
 
     public function me(Request $request): UserResource
     {
-        return new UserResource($request->user()->load('prospector.city'));
+        return new UserResource($request->user()->load('prospector.city', 'prospector.company'));
     }
 
     public function logout(Request $request): Response
@@ -75,7 +83,7 @@ class AuthController extends Controller
             'token_type' => 'Bearer',
             'access_token' => $token->accessToken,
             'expires_at' => $token->token->expires_at?->toIso8601String(),
-            'user' => new UserResource($user->load('prospector.city')),
+            'user' => new UserResource($user->load('prospector.city', 'prospector.company')),
         ], $status);
     }
 }

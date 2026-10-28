@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * O que o Console da Refrata faz na ótica (token da plataforma): criar/atualizar a ótica (e o grupo dela). A que já
- * existia aqui antes do Console (a Otica Exclusive) é ligada pelo CNPJ ou, no mesmo grupo, pelo nome — não duplica.
+ * existia aqui antes do Console (a Otica Exclusive, ainda sem ID) é ligada uma vez pelo CNPJ, e o grupo dela junto — não
+ * duplica. Depois, só pelo ID do Console (`console_id`). Nunca pelo nome.
  * Ótica nova ganha o código de convite (pelo nome) e as situações padrão das indicações.
  */
 class PlatformController extends Controller
@@ -34,12 +35,10 @@ class PlatformController extends Controller
         ]);
 
         [$company, $created] = DB::transaction(function () use ($data, $consoleId) {
-            $group = $this->group($data['group']);
+            // Liga só por identidade: o código do Console ou, para a que já existia aqui, o CNPJ. Nunca pelo nome.
             $company = Company::where('console_id', $consoleId)->first()
-                ?? Company::whereNull('console_id')->where('document', $data['document'])->first()
-                ?? Company::whereNull('console_id')->where('group_id', $group->id)
-                    ->where(fn ($q) => $q->where('name', $data['name'])->when($data['trade_name'], fn ($q, $trade) => $q->orWhere('trade_name', $trade)))
-                    ->first();
+                ?? Company::whereNull('console_id')->where('document', $data['document'])->first();
+            $group = $this->group($data['group'], $company);
             $created = ! $company;
             abort_if($company && $company->group_id !== $group->id, 422, 'A empresa já é de outro grupo.');
             $clash = Company::where('document', $data['document'])->when($company, fn ($q) => $q->whereKeyNot($company->id))->exists();
@@ -74,13 +73,16 @@ class PlatformController extends Controller
     }
 
     /**
+     * O grupo pelo código do Console; senão, o grupo ainda sem ligação da empresa que já existia aqui (achada pelo CNPJ),
+     * que passa a ser ligado. Nunca pelo nome: nome é descrição e muda.
+     *
      * @param  array{console_id: string, name: string, blocked: bool}  $data
      */
-    private function group(array $data): Group
+    private function group(array $data, ?Company $company): Group
     {
-        // Antes do Console havia um grupo só (o Grupo Royal, sem ligação): é ele.
+        $existing = $company?->group;
         $group = Group::where('console_id', $data['console_id'])->first()
-            ?? Group::whereNull('console_id')->where('name', $data['name'])->first()
+            ?? ($existing && $existing->console_id === null ? $existing : null)
             ?? new Group;
         $group->fill([
             'console_id' => $data['console_id'],

@@ -146,6 +146,28 @@ class LabOrderTest extends TestCase
         $this->postJson("/api/admin/lab-orders/{$order['id']}/cancel", ['reason' => 'Desistiu'])->assertUnprocessable();
     }
 
+    public function test_empty_fields_are_not_sent_to_the_lab(): void
+    {
+        $this->link();
+        $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+
+        // Como o painel manda a visão simples: o que não cabe vai nulo (o laboratório recusa adição/bifocal mesmo nulos).
+        $this->postJson('/api/admin/lab-orders', $this->order($client, [
+            'bifocal_style' => null,
+            'material' => null,
+            'refractive_index' => null,
+            'frame_brand' => null,
+            'notes' => null,
+            'eyes' => [['eye' => 'right', 'sphere' => 1, 'cylinder' => -1.5, 'axis' => 10, 'addition' => null, 'prism' => null, 'prism_base' => null, 'dnp' => 32, 'height' => 20, 'near_dnp' => null]],
+        ]))->assertCreated();
+
+        $body = collect($this->sent)->last()['body'];
+        $this->assertArrayNotHasKey('bifocal_style', $body);
+        $this->assertArrayNotHasKey('notes', $body);
+        $this->assertSame(['eye' => 'right', 'sphere' => 1, 'cylinder' => -1.5, 'axis' => 10, 'dnp' => 32, 'height' => 20], $body['eyes'][0]);
+    }
+
     public function test_order_not_sent_is_kept_and_sent_again_and_cancel_goes_to_the_lab(): void
     {
         $this->link();

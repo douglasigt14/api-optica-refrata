@@ -34,12 +34,13 @@ class Laboratory
     public function send(LabOrder $order): void
     {
         $order->loadMissing(['lab', 'client']);
-        $data = [
+        // Sem os vazios: o laboratório recusa campo que não cabe no pedido mesmo nulo (ex.: adição em visão simples).
+        $data = self::withoutNulls([
             ...$order->payload,
             'external_id' => (string) $order->id,
             'optical_order_number' => (string) $order->id,
             'patient_reference' => $order->client->name,
-        ];
+        ]);
 
         $response = $this->call($order->lab, function (PendingRequest $http) use ($order, $data) {
             if (! $order->prescription_path) {
@@ -62,6 +63,20 @@ class Laboratory
     public function cancel(LabOrder $order, string $reason): void
     {
         $order->applyLabStatus($this->call($order->lab, fn (PendingRequest $http) => $http->post("/api/integration/service-orders/{$order->id}/cancel", ['reason' => $reason]))['data']);
+    }
+
+    /**
+     * Tira os campos nulos, também dentro dos olhos.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public static function withoutNulls(array $data): array
+    {
+        return collect($data)
+            ->reject(fn ($value) => $value === null)
+            ->map(fn ($value) => is_array($value) ? self::withoutNulls($value) : $value)
+            ->all();
     }
 
     /**

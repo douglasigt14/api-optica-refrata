@@ -10,7 +10,8 @@ use Illuminate\Http\Request;
 
 /**
  * Quem está logado no painel (login e `/admin/me`): o usuário, as óticas em que pode entrar (com o papel em cada uma e,
- * para o admin, o código de convite dos parceiros) e a ótica escolhida (`company_id`; null = ainda precisa escolher).
+ * para o admin, o código de convite dos parceiros e o painel do financeiro, `financial_url`, para o item Financeiro no
+ * menu) e a ótica escolhida (`company_id`; null = ainda precisa escolher).
  *
  * @mixin User
  */
@@ -32,7 +33,9 @@ class SessionUserResource extends TeamUserResource
                     'name' => $company->displayName(),
                     'role' => $role,
                     'role_label' => $role?->label(),
+                    'console_id' => $company->console_id,
                     'invite_code' => $role === UserRole::Admin ? $company->invite_code : null,
+                    'financial_url' => $role === UserRole::Admin ? $company->financial_url : null,
                 ];
             })->values(),
         ];

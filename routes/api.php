@@ -28,6 +28,8 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
 
 // Aviso de situação dos laboratórios do grupo (passo 3 do roteiro). Chave gravada pelo Console.
 Route::post('/integration/lab-orders/status', [LabIntegrationController::class, 'status'])->middleware(['lab-integration', 'throttle:120,1'])->name('integration.lab-orders.status');
+// Atendimentos da ótica, para o laboratório ligar o lote a um deles (mesma chave do aviso).
+Route::get('/integration/city-visits', [LabIntegrationController::class, 'cityVisits'])->middleware(['lab-integration', 'throttle:120,1'])->name('integration.city-visits');
 
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CityVisitStatus;
 use App\Enums\UserRole;
 use App\Models\City;
+use App\Models\CityVisit;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\LabConnection;
@@ -144,6 +146,25 @@ class LabOrderTest extends TestCase
         $this->withToken('')->getJson("/api/admin/lab-orders/{$order['id']}")->assertOk()
             ->assertJsonPath('data.status_label', 'Separada')->assertJsonPath('data.awaits_frame', false)->assertJsonPath('data.cancelable', false);
         $this->postJson("/api/admin/lab-orders/{$order['id']}/cancel", ['reason' => 'Desistiu'])->assertUnprocessable();
+    }
+
+    public function test_lab_lists_the_city_visits_with_the_inbound_key(): void
+    {
+        $inbound = $this->link();
+        $this->city->update(['state' => 'CE']);
+        CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Atendimento Outubro', 'visit_date' => '2026-10-15', 'end_date' => '2026-10-17']);
+        CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Atendimento Novembro', 'visit_date' => '2026-11-22']);
+        CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Cancelado', 'visit_date' => '2026-12-01', 'status' => CityVisitStatus::Cancelled]);
+
+        $this->getJson('/api/integration/city-visits')->assertUnauthorized();
+        $this->withToken($inbound)->getJson('/api/integration/city-visits')->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.title', 'Atendimento Novembro')
+            ->assertJsonPath('data.1.title', 'Atendimento Outubro')
+            ->assertJsonPath('data.1.city', 'Iguatu')
+            ->assertJsonPath('data.1.state', 'CE')
+            ->assertJsonPath('data.1.visit_date', '2026-10-15')
+            ->assertJsonPath('data.1.end_date', '2026-10-17');
     }
 
     public function test_empty_fields_are_not_sent_to_the_lab(): void

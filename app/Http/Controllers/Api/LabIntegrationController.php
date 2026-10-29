@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Enums\CityVisitStatus;
+use App\Models\CityVisit;
 use App\Models\LabOrder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,5 +29,27 @@ class LabIntegrationController extends Controller
         $order->applyLabStatus($data);
 
         return response()->json(['data' => ['ok' => true]]);
+    }
+
+    /**
+     * Atendimentos desta ótica (menos os cancelados), do mais novo ao mais antigo: o laboratório liga o lote a um deles.
+     */
+    public function cityVisits(): JsonResponse
+    {
+        $visits = CityVisit::with('city')
+            ->where('status', '!=', CityVisitStatus::Cancelled)
+            ->orderByDesc('visit_date')->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        return response()->json(['data' => $visits->map(fn (CityVisit $visit) => [
+            'id' => $visit->id,
+            'title' => $visit->title,
+            'city' => $visit->city?->name,
+            'state' => $visit->city?->state,
+            'visit_date' => $visit->visit_date?->toDateString(),
+            'end_date' => $visit->end_date?->toDateString(),
+            'status' => $visit->status,
+        ])]);
     }
 }

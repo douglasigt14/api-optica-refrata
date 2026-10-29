@@ -25,7 +25,8 @@ use RuntimeException;
 class PlatformController extends Controller
 {
     /**
-     * Cria ou atualiza a ótica `consoleId`. `active` = a empresa está ativa e usa o módulo Ótica.
+     * Cria ou atualiza a ótica `consoleId`. `active` = a empresa está ativa e usa o módulo Ótica. `financial_url` = painel
+     * do financeiro (vazio = a ótica não usa).
      */
     public function upsertCompany(Request $request, string $consoleId): JsonResponse
     {
@@ -38,6 +39,7 @@ class PlatformController extends Controller
             'trade_name' => ['nullable', 'string', 'max:255'],
             'document' => ['required', 'digits:14'],
             'active' => ['required', 'boolean'],
+            'financial_url' => ['sometimes', 'nullable', 'url:http,https', 'max:255'],
         ]);
 
         [$company, $created] = DB::transaction(function () use ($data, $consoleId) {
@@ -59,6 +61,9 @@ class PlatformController extends Controller
                 'document' => $data['document'],
                 'active' => $data['active'],
             ]);
+            if (array_key_exists('financial_url', $data)) {
+                $company->financial_url = filled($data['financial_url']) ? rtrim($data['financial_url'], '/') : null;
+            }
             $company->invite_code ??= Company::inviteCodeFor($data['trade_name'] ?? $data['name']);
             $company->save();
             if ($created) {

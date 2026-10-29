@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\UserRole;
 use App\Models\Company;
 use App\Models\Group;
 use App\Models\LeadStatus;
 use App\Models\PlatformAccess;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Passport\Passport;
 use Tests\TestCase;
 
 /**
@@ -70,5 +73,28 @@ class PlatformTest extends TestCase
         $company = Company::firstWhere('console_id', '01JD0000000000000000NEWOTI');
         $this->assertSame(6, LeadStatus::withoutGlobalScopes()->where('company_id', $company->id)->where('is_default', true)->count());
         $this->assertSame('BEMESTAR2', Company::inviteCodeFor('Bem Estar'));
+    }
+
+    public function test_keeps_the_financial_panel_and_only_the_admin_sees_it(): void
+    {
+        $this->company->update(['document' => '34710587000144', 'console_id' => '01JD000000000000000000EXCL']);
+        $put = fn (array $overrides) => $this->withToken('token-da-plataforma')->putJson('/api/platform/companies/01JD000000000000000000EXCL', $this->payload($overrides))->assertOk();
+
+        $put(['financial_url' => 'https://financial.test/']);
+        $this->assertSame('https://financial.test', $this->company->fresh()->financial_url);
+        // Sem `financial_url` (Console antigo): não mexe.
+        $put([]);
+        $this->assertSame('https://financial.test', $this->company->fresh()->financial_url);
+
+        Passport::actingAs(User::factory()->team()->create());
+        $this->getJson('/api/admin/me')->assertOk()
+            ->assertJsonPath('data.companies.0.console_id', '01JD000000000000000000EXCL')
+            ->assertJsonPath('data.companies.0.financial_url', 'https://financial.test');
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->getJson('/api/admin/me')->assertOk()->assertJsonPath('data.companies.0.financial_url', null);
+
+        // Vazio: tira.
+        $put(['financial_url' => null]);
+        $this->assertNull($this->company->fresh()->financial_url);
     }
 }

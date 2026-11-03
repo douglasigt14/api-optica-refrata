@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\LabIntegrationController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\PlatformPairingController;
+use App\Http\Controllers\Api\PlatformUserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/cities', [CityController::class, 'index']);
@@ -24,6 +25,9 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
     Route::put('/companies/{consoleId}', [PlatformController::class, 'upsertCompany'])->name('companies.upsert');
     Route::put('/companies/{consoleId}/labs/{labConsoleId}', [PlatformController::class, 'labConnection'])->name('companies.lab');
     Route::put('/companies/{consoleId}/labs/{labConsoleId}/token', [PlatformController::class, 'labToken'])->name('companies.lab-token');
+    // Usuários da equipe vindos do Console (passo 7 do roteiro).
+    Route::put('/users/{consoleId}', [PlatformUserController::class, 'upsert'])->name('users.upsert');
+    Route::get('/groups/{groupConsoleId}/users', [PlatformUserController::class, 'index'])->name('groups.users');
 });
 
 // Aviso de situação dos laboratórios do grupo (passo 3 do roteiro). Chave gravada pelo Console.

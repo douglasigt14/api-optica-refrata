@@ -40,6 +40,8 @@ class Laboratory
             'external_id' => (string) $order->id,
             'optical_order_number' => (string) $order->id,
             'patient_reference' => $order->client->name,
+            // O laboratório põe a OS no lote aberto deste atendimento, se houver.
+            'city_visit_id' => $order->city_visit_id,
         ]);
 
         $response = $this->call($order->lab, function (PendingRequest $http) use ($order, $data) {

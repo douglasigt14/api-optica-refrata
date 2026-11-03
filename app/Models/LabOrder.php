@@ -11,10 +11,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Pedido da ótica a um laboratório do grupo (vira OS lá; passo 3 do roteiro). O `id` é o nº do pedido que o laboratório
  * guarda (`external_id`: mandar de novo não duplica). `payload` = o pedido como foi mandado (receita, armação, lente,
  * tratamentos). Não enviado: `sent_at` null e o erro em `send_error` ("Enviar de novo"). A situação vem do laboratório.
+ * `city_visit_id` = o atendimento escolhido (vai junto; com lote aberto dele lá, a OS entra no lote: `lab_batch`).
  */
 #[Fillable([
-    'lab_connection_id', 'client_id', 'user_id', 'payload', 'prescription_path', 'sent_at', 'send_error',
-    'lab_number', 'status', 'status_label', 'awaits_frame', 'cancel_reason', 'status_at',
+    'lab_connection_id', 'client_id', 'city_visit_id', 'user_id', 'payload', 'prescription_path', 'sent_at', 'send_error',
+    'lab_number', 'lab_batch', 'status', 'status_label', 'awaits_frame', 'cancel_reason', 'status_at',
 ])]
 class LabOrder extends Model
 {
@@ -47,6 +48,7 @@ class LabOrder extends Model
     {
         $this->update([
             'lab_number' => $data['number'] ?? $this->lab_number,
+            'lab_batch' => array_key_exists('batch', $data) ? $data['batch'] : $this->lab_batch,
             'status' => $data['status'] ?? $this->status,
             'status_label' => $data['status_label'] ?? $this->status_label,
             'awaits_frame' => (bool) ($data['awaits_frame'] ?? $this->awaits_frame),
@@ -69,6 +71,14 @@ class LabOrder extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    /**
+     * @return BelongsTo<CityVisit, $this>
+     */
+    public function cityVisit(): BelongsTo
+    {
+        return $this->belongsTo(CityVisit::class);
     }
 
     /**

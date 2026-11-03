@@ -21,6 +21,8 @@ class LabOrderRequest extends FormRequest
         return [
             'lab_connection_id' => ['required', 'integer', CurrentCompany::exists('lab_connections')->whereNotNull('token')],
             'client_id' => ['required', 'integer', CurrentCompany::exists('clients')],
+            // Atendimento (opcional): com lote aberto dele no laboratório, a OS entra no lote. Cancelado não serve.
+            'city_visit_id' => ['nullable', 'integer', CurrentCompany::exists('city_visits')->whereNot('status', 'cancelled')],
             'prescription' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,heic,pdf', 'max:10240'],
             'lens_type' => ['required', 'string', 'max:30'],
             'bifocal_style' => ['nullable', 'string', 'max:30'],
@@ -64,6 +66,7 @@ class LabOrderRequest extends FormRequest
             'lab_connection_id.exists' => 'Escolha um laboratório ligado a esta ótica.',
             'client_id.required' => 'Escolha o cliente.',
             'client_id.exists' => 'Escolha um cliente desta ótica.',
+            'city_visit_id.exists' => 'Escolha um atendimento desta ótica que não esteja cancelado.',
             'lens_type.required' => 'Informe o tipo de lente.',
             'frame_type.required' => 'Informe o tipo da armação.',
             'eyes.required' => 'Informe a receita de pelo menos um olho.',

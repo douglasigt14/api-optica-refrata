@@ -54,7 +54,7 @@ class LabOrderController extends Controller
         ]);
 
         $orders = LabOrder::query()
-            ->with(['lab', 'client', 'user'])
+            ->with(['lab', 'client', 'user', 'cityVisit.city'])
             ->when($filters['status'] ?? null, fn ($q, string $status) => $q->where('status', $status))
             ->when($filters['lab_connection_id'] ?? null, fn ($q, int $id) => $q->where('lab_connection_id', $id))
             ->when($filters['client_id'] ?? null, fn ($q, int $id) => $q->where('client_id', $id))
@@ -72,7 +72,7 @@ class LabOrderController extends Controller
 
     public function show(LabOrder $labOrder): LabOrderResource
     {
-        return new LabOrderResource($labOrder->load(['lab', 'client', 'user']));
+        return new LabOrderResource($labOrder->load(['lab', 'client', 'user', 'cityVisit.city']));
     }
 
     public function store(LabOrderRequest $request): JsonResponse
@@ -80,8 +80,9 @@ class LabOrderController extends Controller
         $order = LabOrder::create([
             'lab_connection_id' => $request->integer('lab_connection_id'),
             'client_id' => $request->integer('client_id'),
+            'city_visit_id' => $request->validated('city_visit_id'),
             'user_id' => $request->user()->id,
-            'payload' => collect($request->safe()->except(['lab_connection_id', 'client_id', 'prescription']))->all(),
+            'payload' => collect($request->safe()->except(['lab_connection_id', 'client_id', 'city_visit_id', 'prescription']))->all(),
             'prescription_path' => $request->file('prescription')?->store("companies/{$this->current->require()->id}/prescriptions", 'local'),
         ]);
 
@@ -98,7 +99,7 @@ class LabOrderController extends Controller
             $order->update(['send_error' => mb_substr($error->getMessage(), 0, 500)]);
         }
 
-        return (new LabOrderResource($order->fresh(['lab', 'client', 'user'])))->response()->setStatusCode(201);
+        return (new LabOrderResource($order->fresh(['lab', 'client', 'user', 'cityVisit.city'])))->response()->setStatusCode(201);
     }
 
     /**

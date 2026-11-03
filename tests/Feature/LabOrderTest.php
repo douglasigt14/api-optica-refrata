@@ -54,7 +54,8 @@ class LabOrderTest extends TestCase
                 $path === '/api/integration/catalog' => Http::response(['data' => ['laboratory' => 'Royal Lab', 'treatments' => [['id' => 7, 'name' => 'Antirreflexo']]]]),
                 $this->lab === 'invalid' => Http::response(['message' => 'Erro', 'errors' => ['eyes.0.dnp' => ['Informe a DNP (ou autorize as medidas padrão do laboratório).']]], 422),
                 str_ends_with($path, '/cancel') => Http::response(['data' => ['number' => '000045', 'status' => 'canceled', 'status_label' => 'Cancelada', 'awaits_frame' => true, 'cancel_reason' => 'Cancelada pela ótica: Desistiu']]),
-                default => Http::response(['data' => ['external_id' => '1', 'number' => '000045', 'status' => 'awaiting_measures', 'status_label' => 'Aguardando medidas', 'awaits_frame' => true]], 201),
+                // Com o atendimento, o laboratório põe a OS no lote aberto dele.
+                default => Http::response(['data' => ['external_id' => '1', 'number' => '000045', 'status' => 'awaiting_measures', 'status_label' => 'Aguardando medidas', 'awaits_frame' => true, 'batch' => isset($request->data()['city_visit_id']) ? 'LT000008' : null]], 201),
             };
         });
     }
@@ -165,6 +166,31 @@ class LabOrderTest extends TestCase
             ->assertJsonPath('data.1.state', 'CE')
             ->assertJsonPath('data.1.visit_date', '2026-10-15')
             ->assertJsonPath('data.1.end_date', '2026-10-17');
+    }
+
+    public function test_order_takes_the_city_visit_to_the_lab_and_shows_the_batch(): void
+    {
+        $this->link();
+        $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
+        $visit = CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Atendimento Novembro', 'visit_date' => '2026-11-22']);
+        $canceled = CityVisit::factory()->create(['city_id' => $this->city->id, 'status' => CityVisitStatus::Cancelled]);
+        $theirs = app(CurrentCompany::class)->within(Company::factory()->create(), fn () => CityVisit::factory()->create(['city_id' => $this->city->id]));
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+
+        foreach ([$canceled->id, $theirs->id] as $id) {
+            $this->postJson('/api/admin/lab-orders', $this->order($client, ['city_visit_id' => $id]))->assertUnprocessable()->assertJsonValidationErrors(['city_visit_id']);
+        }
+        $this->postJson('/api/admin/lab-orders', $this->order($client, ['city_visit_id' => $visit->id]))
+            ->assertCreated()
+            ->assertJsonPath('data.city_visit.title', 'Atendimento Novembro')
+            ->assertJsonPath('data.city_visit.city', 'Iguatu')
+            ->assertJsonPath('data.lab_batch', 'LT000008')
+            ->assertJsonMissingPath('data.payload.city_visit_id');
+        $this->assertSame($visit->id, collect($this->sent)->last()['body']['city_visit_id']);
+
+        // Sem atendimento: avulsa.
+        $this->postJson('/api/admin/lab-orders', $this->order($client))->assertCreated()->assertJsonPath('data.city_visit', null)->assertJsonPath('data.lab_batch', null);
+        $this->assertArrayNotHasKey('city_visit_id', collect($this->sent)->last()['body']);
     }
 
     public function test_empty_fields_are_not_sent_to_the_lab(): void

@@ -18,8 +18,8 @@ use RuntimeException;
 
 /**
  * Pedidos aos laboratórios do grupo (admin e atendente; passo 3 do roteiro). Desde 04/11/2026 o pedido é **salvo** e fica
- * "Pendente de envio": confere, edita e só depois envia (um ou vários marcados; os marcados podem ir num lote novo aberto
- * no laboratório). Enviado, vira OS lá e a situação volta pelo aviso (ou "Atualizar"). Recusa ou falha no envio: o pedido
+ * "Pendente de envio": confere, edita e só depois envia (um ou vários marcados). Lote a ótica não abre (só o
+ * laboratório): com atendimento, a OS entra no lote aberto dele lá, se houver. Enviado, vira OS lá e a situação volta pelo aviso (ou "Atualizar"). Recusa ou falha no envio: o pedido
  * continua pendente, com o erro em `send_error`. Cancelar: enquanto o laboratório não separou as lentes.
  */
 class LabOrderController extends Controller
@@ -123,37 +123,24 @@ class LabOrderController extends Controller
     }
 
     /**
-     * Envia os pendentes marcados. Com `new_batch`, abre antes um lote novo no laboratório e manda todos nele: os marcados
-     * precisam ser do mesmo laboratório e do mesmo atendimento (ou todos sem atendimento). Devolve o resultado de cada um.
+     * Envia os pendentes marcados, cada um sozinho (no laboratório, a OS com atendimento entra no lote aberto dele, se
+     * houver; senão vai avulsa). Lote a ótica não abre (04/11/2026). Devolve o resultado de cada um.
      */
     public function sendMany(Request $request): JsonResponse
     {
         $data = $request->validate([
             'ids' => ['required', 'array', 'min:1', 'max:100'],
             'ids.*' => ['integer', 'distinct'],
-            'new_batch' => ['sometimes', 'boolean'],
         ], ['ids.required' => 'Marque os pedidos que vão ser enviados.']);
         $orders = LabOrder::with(['lab', 'client'])->whereIn('id', $data['ids'])->orderBy('id')->get();
         if ($orders->count() !== count($data['ids']) || $orders->contains(fn (LabOrder $order) => ! $order->pending())) {
             throw ValidationException::withMessages(['ids' => 'Marque só pedidos pendentes de envio.']);
         }
 
-        $batch = null;
-        if ($request->boolean('new_batch')) {
-            if ($orders->pluck('lab_connection_id')->unique()->count() > 1) {
-                throw ValidationException::withMessages(['new_batch' => 'Para agrupar num lote, marque pedidos do mesmo laboratório.']);
-            }
-            if ($orders->pluck('city_visit_id')->unique()->count() > 1) {
-                throw ValidationException::withMessages(['new_batch' => 'Para agrupar num lote, marque pedidos do mesmo atendimento (ou todos internos).']);
-            }
-            $batch = $this->run(fn () => $this->laboratory->openBatch($orders->first()->lab, $orders->first()->city_visit_id));
-        }
-
-        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order, $batch['id'] ?? null)]);
+        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order)]);
 
         return response()->json([
             'data' => [
-                'batch' => $batch['barcode'] ?? null,
                 'sent' => $results->whereNull('error')->count(),
                 'results' => $results->values()->all(),
             ],
@@ -163,10 +150,10 @@ class LabOrderController extends Controller
     /**
      * Manda um pedido; null = foi. Falhou: grava o erro no pedido (continua pendente) e devolve a mensagem.
      */
-    private function trySend(LabOrder $order, ?int $batchId = null): ?string
+    private function trySend(LabOrder $order): ?string
     {
         try {
-            $this->laboratory->send($order, $batchId);
+            $this->laboratory->send($order);
 
             return null;
         } catch (ValidationException $error) {

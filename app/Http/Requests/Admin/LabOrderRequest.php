@@ -21,8 +21,13 @@ class LabOrderRequest extends FormRequest
         return [
             'lab_connection_id' => ['required', 'integer', CurrentCompany::exists('lab_connections')->whereNotNull('token')],
             'client_id' => ['required', 'integer', CurrentCompany::exists('clients')],
-            // Atendimento (opcional): com lote aberto dele no laboratório, a OS entra no lote. Cancelado não serve.
-            'city_visit_id' => ['nullable', 'integer', CurrentCompany::exists('city_visits')->whereNot('status', 'cancelled')],
+            // Atendimento interno (na loja: OS avulsa, sem atendimento) ou externo (04/11/2026: atendimento obrigatório; com
+            // lote aberto dele no laboratório, a OS entra no lote). Só confere aqui: não fica guardado nem vai ao laboratório.
+            'service_place' => ['required', 'in:internal,external'],
+            'city_visit_id' => [
+                $this->input('service_place') === 'external' ? 'required' : 'prohibited',
+                'nullable', 'integer', CurrentCompany::exists('city_visits')->whereNot('status', 'cancelled'),
+            ],
             'prescription' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,heic,pdf', 'max:10240'],
             'lens_type' => ['required', 'string', 'max:30'],
             'bifocal_style' => ['nullable', 'string', 'max:30'],
@@ -66,6 +71,10 @@ class LabOrderRequest extends FormRequest
             'lab_connection_id.exists' => 'Escolha um laboratório ligado a esta ótica.',
             'client_id.required' => 'Escolha o cliente.',
             'client_id.exists' => 'Escolha um cliente desta ótica.',
+            'service_place.required' => 'Escolha se o atendimento é interno ou externo.',
+            'service_place.in' => 'Escolha se o atendimento é interno ou externo.',
+            'city_visit_id.required' => 'Atendimento externo: escolha a cidade e o atendimento.',
+            'city_visit_id.prohibited' => 'Atendimento interno não leva atendimento de cidade.',
             'city_visit_id.exists' => 'Escolha um atendimento desta ótica que não esteja cancelado.',
             'lens_type.required' => 'Informe o tipo de lente.',
             'frame_type.required' => 'Informe o tipo da armação.',

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * Pedido da ótica a um laboratório do grupo (vira OS lá; passo 3 do roteiro). O `id` é o nº do pedido que o laboratório
  * guarda (`external_id`: mandar de novo não duplica). `payload` = o pedido como foi mandado (receita, armação, lente,
- * tratamentos). Não enviado: `sent_at` null e o erro em `send_error` ("Enviar de novo"). A situação vem do laboratório.
+ * tratamentos). Pendente de envio (04/11/2026: salvar não envia): `sent_at` null; o erro do último envio em `send_error`. A situação vem do laboratório.
  * `city_visit_id` = o atendimento escolhido (vai junto; com lote aberto dele lá, a OS entra no lote: `lab_batch`).
  */
 #[Fillable([
@@ -32,6 +32,14 @@ class LabOrder extends Model
             'status_at' => 'datetime',
             'awaits_frame' => 'boolean',
         ];
+    }
+
+    /**
+     * Salvo e ainda não enviado ao laboratório (04/11/2026: o pedido é salvo, conferido e só depois enviado). Só ele se edita.
+     */
+    public function pending(): bool
+    {
+        return $this->sent_at === null && $this->status !== 'canceled';
     }
 
     public function cancelable(): bool

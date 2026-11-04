@@ -92,7 +92,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/labs/{labConnection}/catalog', [Admin\LabOrderController::class, 'catalog'])->name('labs.catalog');
             Route::get('/lab-orders', [Admin\LabOrderController::class, 'index'])->name('lab-orders.index');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
+            // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
+            Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');
             Route::get('/lab-orders/{labOrder}', [Admin\LabOrderController::class, 'show'])->name('lab-orders.show');
+            // Editar o pendente: POST (multipart, por causa da receita).
+            Route::post('/lab-orders/{labOrder}', [Admin\LabOrderController::class, 'update'])->name('lab-orders.update');
             Route::post('/lab-orders/{labOrder}/send', [Admin\LabOrderController::class, 'send'])->name('lab-orders.send');
             Route::post('/lab-orders/{labOrder}/refresh', [Admin\LabOrderController::class, 'refresh'])->name('lab-orders.refresh');
             Route::post('/lab-orders/{labOrder}/cancel', [Admin\LabOrderController::class, 'cancel'])->name('lab-orders.cancel');

@@ -26,6 +26,7 @@ class LabOrderResource extends JsonResource
             'city_visit' => $this->cityVisit ? [
                 'id' => $this->cityVisit->id,
                 'title' => $this->cityVisit->title,
+                'city_id' => $this->cityVisit->city_id,
                 'city' => $this->cityVisit->city?->name,
                 'visit_date' => $this->cityVisit->visit_date?->toDateString(),
                 'end_date' => $this->cityVisit->end_date?->toDateString(),
@@ -39,7 +40,9 @@ class LabOrderResource extends JsonResource
             // Lote do laboratório em que a OS entrou ("LT000045"), ou null (avulsa).
             'lab_batch' => $this->lab_batch,
             'status' => $this->status,
-            'status_label' => $this->sent_at ? $this->status_label : 'Não enviado',
+            'status_label' => $this->sent_at || $this->status === 'canceled' ? $this->status_label : 'Pendente de envio',
+            // Salvo e não enviado: confere, edita e envia (04/11/2026).
+            'pending' => $this->pending(),
             'awaits_frame' => $this->awaits_frame,
             'cancel_reason' => $this->cancel_reason,
             'cancelable' => $this->cancelable() && $this->status !== 'canceled',

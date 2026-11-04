@@ -17,9 +17,10 @@ use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
- * Pedidos aos laboratórios do grupo (admin e atendente; passo 3 do roteiro). O pedido vira OS no laboratório; a situação
- * volta pelo aviso de lá (ou "Atualizar"). Erro de preenchimento: volta ao formulário e nada fica salvo. Sem conexão: o
- * pedido fica "Não enviado", com o erro e o "Enviar de novo". Cancelar: enquanto o laboratório não separou as lentes.
+ * Pedidos aos laboratórios do grupo (admin e atendente; passo 3 do roteiro). Desde 04/11/2026 o pedido é **salvo** e fica
+ * "Pendente de envio": confere, edita e só depois envia (um ou vários marcados; os marcados podem ir num lote novo aberto
+ * no laboratório). Enviado, vira OS lá e a situação volta pelo aviso (ou "Atualizar"). Recusa ou falha no envio: o pedido
+ * continua pendente, com o erro em `send_error`. Cancelar: enquanto o laboratório não separou as lentes.
  */
 class LabOrderController extends Controller
 {
@@ -58,7 +59,8 @@ class LabOrderController extends Controller
             ->when($filters['status'] ?? null, fn ($q, string $status) => $q->where('status', $status))
             ->when($filters['lab_connection_id'] ?? null, fn ($q, int $id) => $q->where('lab_connection_id', $id))
             ->when($filters['client_id'] ?? null, fn ($q, int $id) => $q->where('client_id', $id))
-            ->when($request->boolean('not_sent'), fn ($q) => $q->whereNull('sent_at'))
+            // Pendentes de envio (salvos, não enviados, não cancelados).
+            ->when($request->boolean('not_sent'), fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')))
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {
                 $number = ltrim(preg_replace('/\D/', '', $search), '0');
                 $q->where(fn ($q) => $q->whereHas('client', fn ($q) => $q->where('name', 'like', "%{$search}%"))
@@ -75,49 +77,122 @@ class LabOrderController extends Controller
         return new LabOrderResource($labOrder->load(['lab', 'client', 'user', 'cityVisit.city']));
     }
 
+    /**
+     * Salva o pedido (não envia): fica "Pendente de envio".
+     */
     public function store(LabOrderRequest $request): JsonResponse
     {
-        $order = LabOrder::create([
-            'lab_connection_id' => $request->integer('lab_connection_id'),
-            'client_id' => $request->integer('client_id'),
-            'city_visit_id' => $request->validated('city_visit_id'),
-            'user_id' => $request->user()->id,
-            'payload' => collect($request->safe()->except(['lab_connection_id', 'client_id', 'city_visit_id', 'prescription']))->all(),
-            'prescription_path' => $request->file('prescription')?->store("companies/{$this->current->require()->id}/prescriptions", 'local'),
-        ]);
-
-        try {
-            $this->laboratory->send($order);
-        } catch (ValidationException $error) {
-            // Preenchimento recusado pelo laboratório: volta ao formulário, nada fica.
-            if ($order->prescription_path) {
-                Storage::disk('local')->delete($order->prescription_path);
-            }
-            $order->delete();
-            throw $error;
-        } catch (RuntimeException $error) {
-            $order->update(['send_error' => mb_substr($error->getMessage(), 0, 500)]);
-        }
+        $order = LabOrder::create([...$this->fields($request), 'user_id' => $request->user()->id]);
 
         return (new LabOrderResource($order->fresh(['lab', 'client', 'user', 'cityVisit.city'])))->response()->setStatusCode(201);
     }
 
     /**
-     * Manda de novo o pedido que não foi enviado.
+     * Edita o pedido pendente (mesmas regras do salvar). A receita nova troca a anterior; sem receita nova, fica a anterior.
+     */
+    public function update(LabOrderRequest $request, LabOrder $labOrder): LabOrderResource
+    {
+        if (! $labOrder->pending()) {
+            throw ValidationException::withMessages(['status' => 'Só o pedido pendente de envio pode ser editado.']);
+        }
+        $fields = $this->fields($request);
+        if ($fields['prescription_path'] === null) {
+            unset($fields['prescription_path']);
+        } elseif ($labOrder->prescription_path) {
+            Storage::disk('local')->delete($labOrder->prescription_path);
+        }
+        $labOrder->update([...$fields, 'send_error' => null]);
+
+        return $this->show($labOrder);
+    }
+
+    /**
+     * Envia o pedido pendente. Recusa do laboratório (preenchimento) ou falha: continua pendente, com o erro.
      */
     public function send(LabOrder $labOrder): LabOrderResource
     {
-        if ($labOrder->sent_at) {
-            throw ValidationException::withMessages(['status' => 'Este pedido já foi enviado ao laboratório.']);
+        if (! $labOrder->pending()) {
+            throw ValidationException::withMessages(['status' => $labOrder->sent_at ? 'Este pedido já foi enviado ao laboratório.' : 'Pedido cancelado.']);
         }
-        try {
-            $this->laboratory->send($labOrder);
-        } catch (RuntimeException $error) {
-            $labOrder->update(['send_error' => mb_substr($error->getMessage(), 0, 500)]);
-            throw ValidationException::withMessages(['connection' => $error->getMessage()]);
+        $error = $this->trySend($labOrder);
+        if ($error !== null) {
+            throw ValidationException::withMessages(['connection' => $error]);
         }
 
         return $this->show($labOrder);
+    }
+
+    /**
+     * Envia os pendentes marcados. Com `new_batch`, abre antes um lote novo no laboratório e manda todos nele: os marcados
+     * precisam ser do mesmo laboratório e do mesmo atendimento (ou todos sem atendimento). Devolve o resultado de cada um.
+     */
+    public function sendMany(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:100'],
+            'ids.*' => ['integer', 'distinct'],
+            'new_batch' => ['sometimes', 'boolean'],
+        ], ['ids.required' => 'Marque os pedidos que vão ser enviados.']);
+        $orders = LabOrder::with(['lab', 'client'])->whereIn('id', $data['ids'])->orderBy('id')->get();
+        if ($orders->count() !== count($data['ids']) || $orders->contains(fn (LabOrder $order) => ! $order->pending())) {
+            throw ValidationException::withMessages(['ids' => 'Marque só pedidos pendentes de envio.']);
+        }
+
+        $batch = null;
+        if ($request->boolean('new_batch')) {
+            if ($orders->pluck('lab_connection_id')->unique()->count() > 1) {
+                throw ValidationException::withMessages(['new_batch' => 'Para agrupar num lote, marque pedidos do mesmo laboratório.']);
+            }
+            if ($orders->pluck('city_visit_id')->unique()->count() > 1) {
+                throw ValidationException::withMessages(['new_batch' => 'Para agrupar num lote, marque pedidos do mesmo atendimento (ou todos internos).']);
+            }
+            $batch = $this->run(fn () => $this->laboratory->openBatch($orders->first()->lab, $orders->first()->city_visit_id));
+        }
+
+        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order, $batch['id'] ?? null)]);
+
+        return response()->json([
+            'data' => [
+                'batch' => $batch['barcode'] ?? null,
+                'sent' => $results->whereNull('error')->count(),
+                'results' => $results->values()->all(),
+            ],
+        ]);
+    }
+
+    /**
+     * Manda um pedido; null = foi. Falhou: grava o erro no pedido (continua pendente) e devolve a mensagem.
+     */
+    private function trySend(LabOrder $order, ?int $batchId = null): ?string
+    {
+        try {
+            $this->laboratory->send($order, $batchId);
+
+            return null;
+        } catch (ValidationException $error) {
+            $message = 'O laboratório recusou: '.collect($error->errors())->flatten()->unique()->implode(' ');
+        } catch (RuntimeException $error) {
+            $message = $error->getMessage();
+        }
+        $order->update(['send_error' => mb_substr($message, 0, 500)]);
+
+        return $message;
+    }
+
+    /**
+     * Campos do pedido como o formulário manda (salvar e editar).
+     *
+     * @return array<string, mixed>
+     */
+    private function fields(LabOrderRequest $request): array
+    {
+        return [
+            'lab_connection_id' => $request->integer('lab_connection_id'),
+            'client_id' => $request->integer('client_id'),
+            'city_visit_id' => $request->validated('city_visit_id'),
+            'payload' => collect($request->safe()->except(['lab_connection_id', 'client_id', 'service_place', 'city_visit_id', 'prescription']))->all(),
+            'prescription_path' => $request->file('prescription')?->store("companies/{$this->current->require()->id}/prescriptions", 'local'),
+        ];
     }
 
     /**

@@ -31,7 +31,7 @@ class Laboratory
     /**
      * Manda o pedido (com o anexo da receita, se houver) e grava o nº da OS e a situação. Repetir não duplica lá.
      */
-    public function send(LabOrder $order, ?int $batchId = null): void
+    public function send(LabOrder $order): void
     {
         $order->loadMissing(['lab', 'client']);
         // Sem os vazios: o laboratório recusa campo que não cabe no pedido mesmo nulo (ex.: adição em visão simples).
@@ -42,8 +42,6 @@ class Laboratory
             'patient_reference' => $order->client->name,
             // O laboratório põe a OS no lote aberto deste atendimento, se houver.
             'city_visit_id' => $order->city_visit_id,
-            // Lote aberto pela ótica para agrupar o envio (ganha do atendimento).
-            'batch_id' => $batchId,
         ]);
 
         $response = $this->call($order->lab, function (PendingRequest $http) use ($order, $data) {
@@ -57,19 +55,6 @@ class Laboratory
         });
         $order->update(['sent_at' => now(), 'send_error' => null]);
         $order->applyLabStatus($response['data']);
-    }
-
-    /**
-     * Abre um lote no laboratório para agrupar os pedidos que a ótica vai mandar (com o atendimento, se houver).
-     *
-     * @return array{id: int, barcode: string}
-     */
-    public function openBatch(LabConnection $lab, ?int $cityVisitId): array
-    {
-        return $this->call($lab, fn (PendingRequest $http) => $http->post('/api/integration/batches', array_filter([
-            'city_visit_id' => $cityVisitId,
-            'optical_reference' => 'Pedidos da ótica',
-        ])))['data'];
     }
 
     public function refresh(LabOrder $order): void

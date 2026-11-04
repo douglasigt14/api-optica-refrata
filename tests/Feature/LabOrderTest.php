@@ -53,10 +53,9 @@ class LabOrderTest extends TestCase
                 $this->lab === 'down' => Http::response(['message' => 'Server Error'], 500),
                 $path === '/api/integration/catalog' => Http::response(['data' => ['laboratory' => 'Royal Lab', 'treatments' => [['id' => 7, 'name' => 'Antirreflexo']]]]),
                 $this->lab === 'invalid' => Http::response(['message' => 'Erro', 'errors' => ['eyes.0.dnp' => ['Informe a DNP (ou autorize as medidas padrão do laboratório).']]], 422),
-                $path === '/api/integration/batches' => Http::response(['data' => ['id' => 77, 'barcode' => 'LT000077']], 201),
                 str_ends_with($path, '/cancel') => Http::response(['data' => ['number' => '000045', 'status' => 'canceled', 'status_label' => 'Cancelada', 'awaits_frame' => true, 'cancel_reason' => 'Cancelada pela ótica: Desistiu']]),
                 // Com o atendimento, o laboratório põe a OS no lote aberto dele.
-                default => Http::response(['data' => ['external_id' => '1', 'number' => '000045', 'status' => 'awaiting_measures', 'status_label' => 'Aguardando medidas', 'awaits_frame' => true, 'batch' => isset($request->data()['batch_id']) ? 'LT000077' : (isset($request->data()['city_visit_id']) ? 'LT000008' : null)]], 201),
+                default => Http::response(['data' => ['external_id' => '1', 'number' => '000045', 'status' => 'awaiting_measures', 'status_label' => 'Aguardando medidas', 'awaits_frame' => true, 'batch' => isset($request->data()['city_visit_id']) ? 'LT000008' : null]], 201),
             };
         });
     }
@@ -191,7 +190,7 @@ class LabOrderTest extends TestCase
         $this->assertSame([], collect($this->sent)->where('url', 'https://lab.test/api/integration/service-orders')->all());
     }
 
-    public function test_marked_pending_orders_are_sent_alone_or_grouped_in_a_new_batch(): void
+    public function test_marked_pending_orders_are_sent_each_alone_without_opening_a_batch(): void
     {
         $this->link();
         $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
@@ -202,22 +201,21 @@ class LabOrderTest extends TestCase
         $internal = [$save(), $save()];
 
         $this->postJson('/api/admin/lab-orders/send', [])->assertJsonValidationErrors(['ids']);
-        // Lote novo: mesmo atendimento (ou todos internos).
-        $this->postJson('/api/admin/lab-orders/send', ['ids' => [$external[0], $internal[0]], 'new_batch' => true])
-            ->assertUnprocessable()->assertJsonValidationErrors(['new_batch' => 'mesmo atendimento']);
+        // Lote a ótica não abre (04/11/2026): `new_batch` é ignorado e nada vai para /integration/batches.
         $this->sent = [];
         $this->postJson('/api/admin/lab-orders/send', ['ids' => $external, 'new_batch' => true])
-            ->assertOk()->assertJsonPath('data.batch', 'LT000077')->assertJsonPath('data.sent', 2)->assertJsonPath('data.results.0.error', null);
-        $this->assertSame('https://lab.test/api/integration/batches', $this->sent[0]['url']);
+            ->assertOk()->assertJsonPath('data.sent', 2)->assertJsonPath('data.results.0.error', null)->assertJsonMissingPath('data.batch');
+        $this->assertSame([], collect($this->sent)->filter(fn ($call) => str_contains($call['url'], '/integration/batches'))->all());
+        $this->assertArrayNotHasKey('batch_id', $this->sent[0]['body']);
         $this->assertSame($visit->id, $this->sent[0]['body']['city_visit_id']);
-        $this->assertSame(77, $this->sent[1]['body']['batch_id']);
-        $this->getJson("/api/admin/lab-orders/{$external[1]}")->assertJsonPath('data.lab_batch', 'LT000077')->assertJsonPath('data.sent', true);
+        // O laboratório pôs no lote aberto do atendimento.
+        $this->getJson("/api/admin/lab-orders/{$external[1]}")->assertJsonPath('data.lab_batch', 'LT000008')->assertJsonPath('data.sent', true);
         // Já enviados não entram de novo.
         $this->postJson('/api/admin/lab-orders/send', ['ids' => [$external[0], $internal[0]]])->assertJsonValidationErrors(['ids' => 'só pedidos pendentes']);
 
-        // Sem lote novo: cada um segue a regra de sempre; quem falhar continua pendente, com o erro.
+        // Quem falhar continua pendente, com o erro.
         $this->lab = 'invalid';
-        $this->postJson('/api/admin/lab-orders/send', ['ids' => $internal])->assertOk()->assertJsonPath('data.batch', null)->assertJsonPath('data.sent', 0)
+        $this->postJson('/api/admin/lab-orders/send', ['ids' => $internal])->assertOk()->assertJsonPath('data.sent', 0)
             ->assertJsonPath('data.results.1.error', fn ($error) => str_contains($error, 'O laboratório recusou'));
         $this->lab = 'ok';
         $this->postJson('/api/admin/lab-orders/send', ['ids' => $internal])->assertOk()->assertJsonPath('data.sent', 2);

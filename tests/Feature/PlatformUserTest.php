@@ -84,4 +84,26 @@ class PlatformUserTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.companies.0', ['console_id' => '01JD000000000000000000OTIC', 'roles' => ['factory']]);
     }
+
+    public function test_gives_the_person_a_token_for_the_single_login(): void
+    {
+        $url = '/api/platform/users/'.self::USER.'/token';
+        $this->withToken('outra-chave')->postJson($url)->assertUnauthorized();
+        $this->withToken('token-da-plataforma')->postJson($url)->assertNotFound();
+
+        $this->sendUser()->assertOk();
+        $this->withToken('token-da-plataforma')->postJson($url, ['device_name' => 'app.refrataopto'])
+            ->assertOk()->assertJsonPath('token_type', 'Bearer')->assertJsonPath('user.email', 'maria@royal.com');
+
+        // Sem acesso (o Console tirou as empresas): não ganha token. E o que já tinha deixa de valer, como no login daqui.
+        $this->sendUser(['companies' => [], 'password_hash' => null])->assertOk();
+        $this->withToken('token-da-plataforma')->postJson($url)->assertUnprocessable();
+
+        // Com acesso de novo, o token vale como o do login daqui (por último: depois de entrar com ele, o teste não
+        // troca mais o token do cabeçalho).
+        $this->sendUser(['password_hash' => null])->assertOk();
+        $token = $this->withToken('token-da-plataforma')->postJson($url)->assertOk()->json('access_token');
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/admin/me')->assertOk()->assertJsonFragment(['email' => 'maria@royal.com']);
+    }
 }

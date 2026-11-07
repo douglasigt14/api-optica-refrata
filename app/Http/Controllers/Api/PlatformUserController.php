@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Admin\SessionUserResource;
 use App\Models\Company;
 use App\Models\Group;
 use App\Models\User;
+use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +102,34 @@ class PlatformUserController extends Controller
                 'roles' => [$company->pivot->role->value],
             ])->values()->all(),
         ])->values()->all() : []]);
+    }
+
+    /**
+     * Login único (passo 4 do roteiro, pelo painel único `app.refrataopto.com.br`): o Console já conferiu e-mail e senha
+     * e pede aqui um token da pessoa, pela ligação da tela Módulos. Vale o mesmo que no login daqui: só a equipe (parceiro não) e sem ótica disponível, não entra.
+     */
+    public function token(Request $request, string $consoleId): JsonResponse
+    {
+        $device = $request->validate(['device_name' => ['nullable', 'string', 'max:100']])['device_name'] ?? null;
+        $user = User::where('console_id', $consoleId)->whereNull('prospector_id')->first();
+        abort_if($user === null, 404, 'Esta pessoa não tem acesso a este sistema.');
+
+        $companies = $user->load('companies.group')->availableCompanies();
+        if ($companies->isEmpty()) {
+            throw ValidationException::withMessages(['user' => 'Acesso bloqueado. Fale com o administrador da ótica.']);
+        }
+        if ($companies->count() === 1) {
+            app(CurrentCompany::class)->set($companies->first());
+        }
+
+        $token = $user->createToken($device ?: 'painel único');
+
+        return response()->json([
+            'token_type' => 'Bearer',
+            'access_token' => $token->accessToken,
+            'expires_at' => $token->token->expires_at?->toIso8601String(),
+            'user' => new SessionUserResource($user),
+        ]);
     }
 
     /**

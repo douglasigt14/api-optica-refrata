@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['city_id', 'title', 'visit_date', 'end_date', 'status', 'active'])]
+#[Fillable(['city_id', 'title', 'visit_date', 'end_date', 'status', 'active', 'orders_closed_at'])]
 class CityVisit extends Model
 {
     /** @use HasFactory<CityVisitFactory> */
@@ -44,7 +44,28 @@ class CityVisit extends Model
             'end_date' => 'date',
             'status' => CityVisitStatus::class,
             'active' => 'boolean',
+            'orders_closed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Atendimentos que recebem pedidos ao laboratório (07/11/2026): não cancelados, já começaram (1º dia até hoje) e sem
+     * "Encerrar pedidos". Não depende do "Receber indicações" (`active`): os pedidos chegam dias depois do exame.
+     *
+     * @param  Builder<CityVisit>  $query
+     */
+    #[Scope]
+    protected function acceptingOrders(Builder $query): void
+    {
+        $query->where('status', '!=', CityVisitStatus::Cancelled)
+            ->whereNull('orders_closed_at')
+            ->whereDate('visit_date', '<=', today());
+    }
+
+    /** Recebe pedidos agora? (a mesma regra do `acceptingOrders`). */
+    public function acceptsOrders(): bool
+    {
+        return $this->status !== CityVisitStatus::Cancelled && $this->orders_closed_at === null && $this->visit_date->lte(today());
     }
 
     /**
@@ -80,6 +101,11 @@ class CityVisit extends Model
     /**
      * @return HasMany<Lead, $this>
      */
+    public function labOrders(): HasMany
+    {
+        return $this->hasMany(LabOrder::class);
+    }
+
     public function leads(): HasMany
     {
         return $this->hasMany(Lead::class);

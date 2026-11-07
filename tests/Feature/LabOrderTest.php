@@ -190,36 +190,76 @@ class LabOrderTest extends TestCase
         $this->assertSame([], collect($this->sent)->where('url', 'https://lab.test/api/integration/service-orders')->all());
     }
 
-    public function test_marked_pending_orders_are_sent_each_alone_without_opening_a_batch(): void
+    public function test_orders_of_a_visit_go_together_and_standalone_ones_alone(): void
     {
         $this->link();
+        $this->city->update(['state' => 'CE']);
         $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
-        $visit = CityVisit::factory()->create(['city_id' => $this->city->id]);
+        $visit = CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Atendimento Novembro', 'visit_date' => today()->subDays(2), 'end_date' => today()->subDay()]);
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
         $save = fn (array $overrides = []) => $this->postJson('/api/admin/lab-orders', $this->order($client, $overrides))->assertCreated()->json('data.id');
         $external = [$save(['service_place' => 'external', 'city_visit_id' => $visit->id]), $save(['service_place' => 'external', 'city_visit_id' => $visit->id])];
         $internal = [$save(), $save()];
 
-        $this->postJson('/api/admin/lab-orders/send', [])->assertJsonValidationErrors(['ids']);
-        // Lote a ótica não abre (04/11/2026): `new_batch` é ignorado e nada vai para /integration/batches.
-        $this->sent = [];
-        $this->postJson('/api/admin/lab-orders/send', ['ids' => $external, 'new_batch' => true])
-            ->assertOk()->assertJsonPath('data.sent', 2)->assertJsonPath('data.results.0.error', null)->assertJsonMissingPath('data.batch');
-        $this->assertSame([], collect($this->sent)->filter(fn ($call) => str_contains($call['url'], '/integration/batches'))->all());
-        $this->assertArrayNotHasKey('batch_id', $this->sent[0]['body']);
-        $this->assertSame($visit->id, $this->sent[0]['body']['city_visit_id']);
-        // O laboratório pôs no lote aberto do atendimento.
-        $this->getJson("/api/admin/lab-orders/{$external[1]}")->assertJsonPath('data.lab_batch', 'LT000008')->assertJsonPath('data.sent', true);
-        // Já enviados não entram de novo.
-        $this->postJson('/api/admin/lab-orders/send', ['ids' => [$external[0], $internal[0]]])->assertJsonValidationErrors(['ids' => 'só pedidos pendentes']);
+        // Pedido de atendimento não vai sozinho (nem marcado): vai pelo atendimento, junto com os outros.
+        $this->postJson("/api/admin/lab-orders/{$external[0]}/send")->assertJsonValidationErrors(['status' => 'envie pelo atendimento']);
+        $this->postJson('/api/admin/lab-orders/send', ['ids' => [$external[0], $internal[0]]])->assertJsonValidationErrors(['status']);
+        $this->getJson("/api/admin/lab-orders?city_visit_id={$visit->id}")->assertJsonCount(2, 'data');
+        $this->getJson('/api/admin/lab-orders?standalone=1')->assertJsonCount(2, 'data');
 
-        // Quem falhar continua pendente, com o erro.
+        $this->sent = [];
+        $this->postJson("/api/admin/lab-order-visits/{$visit->id}/send")->assertOk()->assertJsonPath('data.sent', 2)->assertJsonPath('data.results.0.error', null);
+        // O laboratório põe no lote aberto do atendimento ou abre um, com os dados do atendimento.
+        $body = $this->sent[0]['body'];
+        $this->assertSame($visit->id, $body['city_visit_id']);
+        $this->assertTrue($body['open_batch']);
+        $this->assertSame(['title' => 'Atendimento Novembro', 'city' => 'Iguatu', 'state' => 'CE', 'visit_date' => today()->subDays(2)->toDateString(), 'end_date' => today()->subDay()->toDateString()], $body['city_visit']);
+        $this->getJson("/api/admin/lab-orders/{$external[1]}")->assertJsonPath('data.lab_batch', 'LT000008')->assertJsonPath('data.sent', true);
+        // Nada mais pendente no atendimento.
+        $this->postJson("/api/admin/lab-order-visits/{$visit->id}/send")->assertJsonValidationErrors(['orders']);
+
+        // Avulsos: um a um ou marcados, sem lote; quem falhar continua pendente, com o erro.
         $this->lab = 'invalid';
         $this->postJson('/api/admin/lab-orders/send', ['ids' => $internal])->assertOk()->assertJsonPath('data.sent', 0)
             ->assertJsonPath('data.results.1.error', fn ($error) => str_contains($error, 'O laboratório recusou'));
         $this->lab = 'ok';
+        $this->sent = [];
         $this->postJson('/api/admin/lab-orders/send', ['ids' => $internal])->assertOk()->assertJsonPath('data.sent', 2);
+        $this->assertFalse($this->sent[0]['body']['open_batch']);
+        $this->assertArrayNotHasKey('city_visit_id', $this->sent[0]['body']);
         $this->getJson('/api/admin/lab-orders?not_sent=1')->assertJsonCount(0, 'data');
+    }
+
+    public function test_visits_receiving_orders_are_listed_and_can_be_closed(): void
+    {
+        $this->link();
+        $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
+        $other = City::factory()->create(['name' => 'Crato']);
+        $old = CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Outubro', 'visit_date' => today()->subDays(20), 'end_date' => today()->subDays(18), 'status' => CityVisitStatus::Completed]);
+        $now = CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Novembro', 'visit_date' => today()]);
+        CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Futuro', 'visit_date' => today()->addDays(5)]);
+        CityVisit::factory()->create(['city_id' => $this->city->id, 'title' => 'Cancelado', 'visit_date' => today()->subDay(), 'status' => CityVisitStatus::Cancelled]);
+        CityVisit::factory()->create(['city_id' => $other->id, 'title' => 'Crato', 'visit_date' => today()->subDay()]);
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->postJson('/api/admin/lab-orders', $this->order($client, ['service_place' => 'external', 'city_visit_id' => $old->id]))->assertCreated();
+
+        // A partir do 1º dia, não cancelados e sem "Encerrar pedidos" (concluído continua: os pedidos chegam depois).
+        $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.title', 'Novembro')
+            ->assertJsonPath('data.1.title', 'Outubro')
+            ->assertJsonPath('data.1.pending_count', 1)
+            ->assertJsonPath('data.1.sent_count', 0)
+            ->assertJsonPath('data.1.city.name', 'Iguatu');
+        $this->getJson('/api/admin/lab-order-visits')->assertJsonCount(3, 'data');
+
+        // Com pedido pendente, não encerra.
+        $this->postJson("/api/admin/lab-order-visits/{$old->id}/close")->assertJsonValidationErrors(['orders']);
+        $this->postJson("/api/admin/lab-order-visits/{$now->id}/close")->assertOk()->assertJsonPath('data.accepts_orders', false);
+        $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertJsonCount(1, 'data');
+        // Encerrado não recebe pedido novo; reabrir volta.
+        $this->postJson('/api/admin/lab-orders', $this->order($client, ['service_place' => 'external', 'city_visit_id' => $now->id]))->assertJsonValidationErrors(['city_visit_id']);
+        $this->deleteJson("/api/admin/lab-order-visits/{$now->id}/close")->assertOk()->assertJsonPath('data.accepts_orders', true);
     }
 
     public function test_lab_lists_the_city_visits_with_the_inbound_key(): void
@@ -263,7 +303,8 @@ class LabOrderTest extends TestCase
             ->assertJsonPath('data.city_visit.city', 'Iguatu')
             ->assertJsonMissingPath('data.payload.city_visit_id')
             ->assertJsonMissingPath('data.payload.service_place')->json('data.id');
-        $this->postJson("/api/admin/lab-orders/{$id}/send")->assertOk()->assertJsonPath('data.lab_batch', 'LT000008');
+        $this->postJson("/api/admin/lab-order-visits/{$visit->id}/send")->assertOk()->assertJsonPath('data.sent', 1);
+        $this->getJson("/api/admin/lab-orders/{$id}")->assertJsonPath('data.lab_batch', 'LT000008');
         $this->assertSame($visit->id, collect($this->sent)->last()['body']['city_visit_id']);
         $this->assertArrayNotHasKey('service_place', collect($this->sent)->last()['body']);
 

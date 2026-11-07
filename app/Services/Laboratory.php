@@ -30,18 +30,29 @@ class Laboratory
 
     /**
      * Manda o pedido (com o anexo da receita, se houver) e grava o nº da OS e a situação. Repetir não duplica lá.
+     * Pedido de atendimento (07/11/2026: vai junto com os outros do atendimento, `LabOrderController::sendVisit`): o
+     * laboratório põe a OS no lote aberto do atendimento ou **abre um lote** ligado a ele (`open_batch`, com os dados do
+     * atendimento para não precisar buscá-los aqui).
      */
     public function send(LabOrder $order): void
     {
-        $order->loadMissing(['lab', 'client']);
+        $order->loadMissing(['lab', 'client', 'cityVisit.city']);
+        $visit = $order->cityVisit;
         // Sem os vazios: o laboratório recusa campo que não cabe no pedido mesmo nulo (ex.: adição em visão simples).
         $data = self::withoutNulls([
             ...$order->payload,
             'external_id' => (string) $order->id,
             'optical_order_number' => (string) $order->id,
             'patient_reference' => $order->client->name,
-            // O laboratório põe a OS no lote aberto deste atendimento, se houver.
             'city_visit_id' => $order->city_visit_id,
+            'open_batch' => $visit !== null,
+            'city_visit' => $visit ? [
+                'title' => $visit->title,
+                'city' => $visit->city?->name,
+                'state' => $visit->city?->state,
+                'visit_date' => $visit->visit_date->toDateString(),
+                'end_date' => $visit->end_date?->toDateString(),
+            ] : null,
         ]);
 
         $response = $this->call($order->lab, function (PendingRequest $http) use ($order, $data) {

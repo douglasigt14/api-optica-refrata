@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\LabOrderRequest;
 use App\Http\Resources\Admin\LabOrderResource;
+use App\Models\CityVisit;
 use App\Models\LabConnection;
 use App\Models\LabOrder;
 use App\Services\Laboratory;
@@ -17,10 +18,12 @@ use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
- * Pedidos aos laboratórios do grupo (admin e atendente; passo 3 do roteiro). Desde 04/11/2026 o pedido é **salvo** e fica
- * "Pendente de envio": confere, edita e só depois envia (um ou vários marcados). Lote a ótica não abre (só o
- * laboratório): com atendimento, a OS entra no lote aberto dele lá, se houver. Enviado, vira OS lá e a situação volta pelo aviso (ou "Atualizar"). Recusa ou falha no envio: o pedido
- * continua pendente, com o erro em `send_error`. Cancelar: enquanto o laboratório não separou as lentes.
+ * Pedidos aos laboratórios do grupo (admin e atendente; passo 3 do roteiro). O pedido é **salvo** e fica "Pendente de
+ * envio": confere, edita e só depois envia. **Pedidos por atendimento (07/11/2026):** o pedido de atendimento externo é
+ * lançado dentro do atendimento e vai **junto com os outros dele** (`sendVisit`): no laboratório, a OS entra no lote
+ * aberto do atendimento ou o laboratório abre um lote ligado a ele. Sozinho, só o **avulso** (atendimento na loja).
+ * Enviado, vira OS lá e a situação volta pelo aviso (ou "Atualizar"). Recusa ou falha no envio: o pedido continua
+ * pendente, com o erro em `send_error`. Cancelar: enquanto o laboratório não separou as lentes.
  */
 class LabOrderController extends Controller
 {
@@ -52,6 +55,9 @@ class LabOrderController extends Controller
             'lab_connection_id' => ['nullable', 'integer'],
             'client_id' => ['nullable', 'integer'],
             'not_sent' => ['nullable', 'boolean'],
+            'city_visit_id' => ['nullable', 'integer'],
+            // Só os avulsos (da loja, sem atendimento).
+            'standalone' => ['nullable', 'boolean'],
         ]);
 
         $orders = LabOrder::query()
@@ -59,6 +65,8 @@ class LabOrderController extends Controller
             ->when($filters['status'] ?? null, fn ($q, string $status) => $q->where('status', $status))
             ->when($filters['lab_connection_id'] ?? null, fn ($q, int $id) => $q->where('lab_connection_id', $id))
             ->when($filters['client_id'] ?? null, fn ($q, int $id) => $q->where('client_id', $id))
+            ->when($filters['city_visit_id'] ?? null, fn ($q, int $id) => $q->where('city_visit_id', $id))
+            ->when($request->boolean('standalone'), fn ($q) => $q->whereNull('city_visit_id'))
             // Pendentes de envio (salvos, não enviados, não cancelados).
             ->when($request->boolean('not_sent'), fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')))
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {
@@ -114,6 +122,7 @@ class LabOrderController extends Controller
         if (! $labOrder->pending()) {
             throw ValidationException::withMessages(['status' => $labOrder->sent_at ? 'Este pedido já foi enviado ao laboratório.' : 'Pedido cancelado.']);
         }
+        self::assertStandalone($labOrder);
         $error = $this->trySend($labOrder);
         if ($error !== null) {
             throw ValidationException::withMessages(['connection' => $error]);
@@ -123,8 +132,7 @@ class LabOrderController extends Controller
     }
 
     /**
-     * Envia os pendentes marcados, cada um sozinho (no laboratório, a OS com atendimento entra no lote aberto dele, se
-     * houver; senão vai avulsa). Lote a ótica não abre (04/11/2026). Devolve o resultado de cada um.
+     * Envia os avulsos pendentes marcados, cada um sozinho. Pedido de atendimento vai pelo atendimento (`sendVisit`).
      */
     public function sendMany(Request $request): JsonResponse
     {
@@ -136,6 +144,7 @@ class LabOrderController extends Controller
         if ($orders->count() !== count($data['ids']) || $orders->contains(fn (LabOrder $order) => ! $order->pending())) {
             throw ValidationException::withMessages(['ids' => 'Marque só pedidos pendentes de envio.']);
         }
+        $orders->each(fn (LabOrder $order) => self::assertStandalone($order));
 
         $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order)]);
 
@@ -145,6 +154,115 @@ class LabOrderController extends Controller
                 'results' => $results->values()->all(),
             ],
         ]);
+    }
+
+    /**
+     * Atendimentos que recebem pedidos (1º dia já chegou, não cancelados, sem "Encerrar pedidos"), do mais recente ao
+     * mais antigo, com quantos pedidos pendentes, enviados e cancelados têm. Filtro: `city_id`.
+     */
+    public function visits(Request $request): JsonResponse
+    {
+        $cityId = $request->validate(['city_id' => ['nullable', 'integer']])['city_id'] ?? null;
+        $visits = CityVisit::acceptingOrders()
+            ->with('city')
+            ->when($cityId, fn ($q, int $id) => $q->where('city_id', $id))
+            ->withCount([
+                'labOrders as pending_count' => fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
+                'labOrders as sent_count' => fn ($q) => $q->whereNotNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
+            ])
+            ->orderByDesc('visit_date')->orderByDesc('id')
+            ->get();
+
+        return response()->json(['data' => $visits->map(fn (CityVisit $visit) => self::visitData($visit))->values()]);
+    }
+
+    /**
+     * Um atendimento dos pedidos (aceitando ou não), com as contagens.
+     */
+    public function visit(CityVisit $cityVisit): JsonResponse
+    {
+        $cityVisit->load('city')->loadCount([
+            'labOrders as pending_count' => fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
+            'labOrders as sent_count' => fn ($q) => $q->whereNotNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
+        ]);
+
+        return response()->json(['data' => self::visitData($cityVisit)]);
+    }
+
+    /**
+     * Envia ao laboratório **todos** os pedidos pendentes do atendimento, juntos: no laboratório, as OS entram no lote
+     * aberto do atendimento ou num lote novo ligado a ele (cada laboratório, o seu). Quem falhar fica pendente, com o erro.
+     */
+    public function sendVisit(CityVisit $cityVisit): JsonResponse
+    {
+        $orders = $cityVisit->labOrders()->with(['lab', 'client', 'cityVisit.city'])
+            ->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled'))
+            ->orderBy('id')->get();
+        if ($orders->isEmpty()) {
+            throw ValidationException::withMessages(['orders' => 'Este atendimento não tem pedidos pendentes de envio.']);
+        }
+
+        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order)]);
+
+        return response()->json([
+            'data' => [
+                'sent' => $results->whereNull('error')->count(),
+                'results' => $results->values()->all(),
+            ],
+        ]);
+    }
+
+    /**
+     * "Encerrar pedidos": o atendimento sai dos cards e não recebe mais pedidos. Com pedido pendente, não encerra.
+     */
+    public function closeOrders(CityVisit $cityVisit): JsonResponse
+    {
+        $pending = $cityVisit->labOrders()->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled'))->count();
+        if ($pending > 0) {
+            throw ValidationException::withMessages(['orders' => "Este atendimento tem {$pending} pedido(s) pendente(s): envie ou cancele antes de encerrar."]);
+        }
+        $cityVisit->update(['orders_closed_at' => now()]);
+
+        return $this->visit($cityVisit);
+    }
+
+    /**
+     * Volta a receber pedidos (desfaz o "Encerrar pedidos").
+     */
+    public function reopenOrders(CityVisit $cityVisit): JsonResponse
+    {
+        $cityVisit->update(['orders_closed_at' => null]);
+
+        return $this->visit($cityVisit);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function visitData(CityVisit $visit): array
+    {
+        return [
+            'id' => $visit->id,
+            'title' => $visit->title,
+            'city' => $visit->city ? ['id' => $visit->city->id, 'name' => $visit->city->name, 'state' => $visit->city->state] : null,
+            'visit_date' => $visit->visit_date->toDateString(),
+            'end_date' => $visit->end_date?->toDateString(),
+            'status' => $visit->status->value,
+            'accepts_orders' => $visit->acceptsOrders(),
+            'orders_closed_at' => $visit->orders_closed_at?->toIso8601String(),
+            'pending_count' => (int) $visit->pending_count,
+            'sent_count' => (int) $visit->sent_count,
+        ];
+    }
+
+    /**
+     * Sozinho só vai o avulso (da loja); pedido de atendimento vai junto com os outros dele.
+     */
+    private static function assertStandalone(LabOrder $order): void
+    {
+        if ($order->city_visit_id !== null) {
+            throw ValidationException::withMessages(['status' => 'Pedido de atendimento: envie pelo atendimento, junto com os outros pedidos dele.']);
+        }
     }
 
     /**

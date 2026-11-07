@@ -93,6 +93,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/labs', [Admin\LabOrderController::class, 'labs'])->name('labs.index');
             Route::get('/labs/{labConnection}/catalog', [Admin\LabOrderController::class, 'catalog'])->name('labs.catalog');
             Route::get('/lab-orders', [Admin\LabOrderController::class, 'index'])->name('lab-orders.index');
+            // Pedidos por atendimento (07/11/2026): os atendimentos que recebem pedidos, enviar todos juntos e encerrar.
+            Route::get('/lab-order-visits', [Admin\LabOrderController::class, 'visits'])->name('lab-order-visits.index');
+            Route::get('/lab-order-visits/{cityVisit}', [Admin\LabOrderController::class, 'visit'])->name('lab-order-visits.show');
+            Route::post('/lab-order-visits/{cityVisit}/send', [Admin\LabOrderController::class, 'sendVisit'])->name('lab-order-visits.send');
+            Route::post('/lab-order-visits/{cityVisit}/close', [Admin\LabOrderController::class, 'closeOrders'])->name('lab-order-visits.close');
+            Route::delete('/lab-order-visits/{cityVisit}/close', [Admin\LabOrderController::class, 'reopenOrders'])->name('lab-order-visits.reopen');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
             Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');

@@ -26,7 +26,7 @@ class LabOrderRequest extends FormRequest
             'service_place' => ['required', 'in:internal,external'],
             'city_visit_id' => [
                 $this->input('service_place') === 'external' ? 'required' : 'prohibited',
-                'nullable', 'integer', CurrentCompany::exists('city_visits')->whereNot('status', 'cancelled'),
+                'nullable', 'integer', CurrentCompany::exists('city_visits')->whereNot('status', 'cancelled')->whereNull('orders_closed_at'),
             ],
             'prescription' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,heic,pdf', 'max:10240'],
             'lens_type' => ['required', 'string', 'max:30'],
@@ -75,7 +75,7 @@ class LabOrderRequest extends FormRequest
             'service_place.in' => 'Escolha se o atendimento é interno ou externo.',
             'city_visit_id.required' => 'Atendimento externo: escolha a cidade e o atendimento.',
             'city_visit_id.prohibited' => 'Atendimento interno não leva atendimento de cidade.',
-            'city_visit_id.exists' => 'Escolha um atendimento desta ótica que não esteja cancelado.',
+            'city_visit_id.exists' => 'Escolha um atendimento desta ótica que esteja recebendo pedidos (não cancelado nem encerrado).',
             'lens_type.required' => 'Informe o tipo de lente.',
             'frame_type.required' => 'Informe o tipo da armação.',
             'eyes.required' => 'Informe a receita de pelo menos um olho.',

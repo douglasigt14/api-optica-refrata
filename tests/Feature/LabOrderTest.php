@@ -243,20 +243,22 @@ class LabOrderTest extends TestCase
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
         $this->postJson('/api/admin/lab-orders', $this->order($client, ['service_place' => 'external', 'city_visit_id' => $old->id]))->assertCreated();
 
-        // A partir do 1º dia, não cancelados e sem "Encerrar pedidos" (concluído continua: os pedidos chegam depois).
+        // Desde que é cadastrado (não espera o 1º dia), não cancelado e sem "Encerrar pedidos" (concluído continua: os
+        // pedidos chegam depois). Do mais novo ao mais antigo.
         $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.title', 'Novembro')
-            ->assertJsonPath('data.1.title', 'Outubro')
-            ->assertJsonPath('data.1.pending_count', 1)
-            ->assertJsonPath('data.1.sent_count', 0)
-            ->assertJsonPath('data.1.city.name', 'Iguatu');
-        $this->getJson('/api/admin/lab-order-visits')->assertJsonCount(3, 'data');
+            ->assertJsonCount(3, 'data')
+            ->assertJsonPath('data.0.title', 'Futuro')
+            ->assertJsonPath('data.1.title', 'Novembro')
+            ->assertJsonPath('data.2.title', 'Outubro')
+            ->assertJsonPath('data.2.pending_count', 1)
+            ->assertJsonPath('data.2.sent_count', 0)
+            ->assertJsonPath('data.2.city.name', 'Iguatu');
+        $this->getJson('/api/admin/lab-order-visits')->assertJsonCount(4, 'data');
 
         // Com pedido pendente, não encerra.
         $this->postJson("/api/admin/lab-order-visits/{$old->id}/close")->assertJsonValidationErrors(['orders']);
         $this->postJson("/api/admin/lab-order-visits/{$now->id}/close")->assertOk()->assertJsonPath('data.accepts_orders', false);
-        $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertJsonCount(1, 'data');
+        $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertJsonCount(2, 'data');
         // Encerrado não recebe pedido novo; reabrir volta.
         $this->postJson('/api/admin/lab-orders', $this->order($client, ['service_place' => 'external', 'city_visit_id' => $now->id]))->assertJsonValidationErrors(['city_visit_id']);
         $this->deleteJson("/api/admin/lab-order-visits/{$now->id}/close")->assertOk()->assertJsonPath('data.accepts_orders', true);

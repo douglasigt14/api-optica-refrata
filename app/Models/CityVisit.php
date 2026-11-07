@@ -49,8 +49,8 @@ class CityVisit extends Model
     }
 
     /**
-     * Atendimentos que recebem pedidos ao laboratório (07/11/2026): não cancelados, já começaram (1º dia até hoje) e sem
-     * "Encerrar pedidos". Não depende do "Receber indicações" (`active`): os pedidos chegam dias depois do exame.
+     * Atendimentos que recebem pedidos ao laboratório (07/11/2026): não cancelados e sem "Encerrar pedidos", **desde que
+     * são cadastrados** (não precisa chegar o 1º dia). Não depende do "Receber indicações" (`active`).
      *
      * @param  Builder<CityVisit>  $query
      */
@@ -58,14 +58,13 @@ class CityVisit extends Model
     protected function acceptingOrders(Builder $query): void
     {
         $query->where('status', '!=', CityVisitStatus::Cancelled)
-            ->whereNull('orders_closed_at')
-            ->whereDate('visit_date', '<=', today());
+            ->whereNull('orders_closed_at');
     }
 
     /** Recebe pedidos agora? (a mesma regra do `acceptingOrders`). */
     public function acceptsOrders(): bool
     {
-        return $this->status !== CityVisitStatus::Cancelled && $this->orders_closed_at === null && $this->visit_date->lte(today());
+        return $this->status !== CityVisitStatus::Cancelled && $this->orders_closed_at === null;
     }
 
     /**

@@ -157,8 +157,8 @@ class LabOrderController extends Controller
     }
 
     /**
-     * Atendimentos que recebem pedidos (1º dia já chegou, não cancelados, sem "Encerrar pedidos"), do mais recente ao
-     * mais antigo, com quantos pedidos pendentes, enviados e cancelados têm. Filtro: `city_id`.
+     * Atendimentos que recebem pedidos (não cancelados, sem "Encerrar pedidos"; desde que são cadastrados), do mais
+     * recente ao mais antigo, com quantos pedidos pendentes, enviados e cancelados têm. Filtro: `city_id`.
      */
     public function visits(Request $request): JsonResponse
     {

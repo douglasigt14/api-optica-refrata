@@ -27,6 +27,8 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
     Route::put('/companies/{consoleId}/labs/{labConsoleId}/token', [PlatformController::class, 'labToken'])->name('companies.lab-token');
     // Usuários da equipe vindos do Console (passo 7 do roteiro).
     Route::put('/users/{consoleId}', [PlatformUserController::class, 'upsert'])->name('users.upsert');
+    // Login único pelo painel único (passo 4): o Console pede o token da pessoa depois de conferir a senha.
+    Route::post('/users/{consoleId}/token', [PlatformUserController::class, 'token'])->name('users.token');
     Route::get('/groups/{groupConsoleId}/users', [PlatformUserController::class, 'index'])->name('groups.users');
 });
 

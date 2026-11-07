@@ -95,7 +95,9 @@ class LabOrderTest extends TestCase
     {
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
 
-        $this->postJson('/api/admin/clients', ['name' => 'Maria'])->assertUnprocessable()->assertJsonValidationErrors(['phone_number', 'city_id']);
+        $this->postJson('/api/admin/clients', ['name' => 'Maria'])->assertUnprocessable()->assertJsonValidationErrors(['city_id'])->assertJsonMissingValidationErrors(['phone_number']);
+        // CPF inválido (dígito verificador) não passa.
+        $this->postJson('/api/admin/clients', ['name' => 'Maria', 'city_id' => $this->city->id, 'cpf' => '064.103.073-82'])->assertJsonValidationErrors(['cpf' => 'CPF inválido.']);
         $other = City::factory()->inactive()->create();
         $this->postJson('/api/admin/clients', ['name' => 'Maria', 'phone_number' => '88999990000', 'city_id' => $other->id])
             ->assertJsonValidationErrors(['city_id' => 'Escolha uma cidade atendida pela ótica.']);
@@ -103,6 +105,13 @@ class LabOrderTest extends TestCase
             ->assertCreated()->assertJsonPath('data.phone_number', '88999990000')->json('data.id');
         $this->patchJson("/api/admin/clients/{$id}", ['name' => 'Maria S. Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id, 'birth_date' => '1990-05-01'])->assertOk();
         $this->getJson('/api/admin/clients?search=souza')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.birth_date', '1990-05-01');
+
+        // Quem paga: CPF (só números, único na ótica) e endereço. O paciente pode vir sem telefone (ex.: criança).
+        $this->patchJson("/api/admin/clients/{$id}", ['name' => 'Maria S. Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id, 'cpf' => '064.103.073-81', 'address' => 'Rua A, 10 - Centro'])
+            ->assertOk()->assertJsonPath('data.cpf', '06410307381')->assertJsonPath('data.address', 'Rua A, 10 - Centro');
+        $this->getJson('/api/admin/clients?search=064.103')->assertJsonCount(1, 'data');
+        $this->postJson('/api/admin/clients', ['name' => 'Outra', 'city_id' => $this->city->id, 'cpf' => '06410307381'])->assertJsonValidationErrors(['cpf' => 'Já há um cliente com este CPF.']);
+        $this->postJson('/api/admin/clients', ['name' => 'Pedro (filho)', 'city_id' => $this->city->id, 'birth_date' => '2016-10-02'])->assertCreated()->assertJsonPath('data.phone_number', null);
 
         // De outra ótica, não aparece.
         $theirs = app(CurrentCompany::class)->within(Company::factory()->create(), fn () => Client::create(['name' => 'Outro', 'phone_number' => '88911112222', 'city_id' => $this->city->id]));

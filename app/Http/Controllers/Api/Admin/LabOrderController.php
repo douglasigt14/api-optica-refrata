@@ -8,11 +8,14 @@ use App\Http\Resources\Admin\LabOrderResource;
 use App\Models\CityVisit;
 use App\Models\LabConnection;
 use App\Models\LabOrder;
+use App\Models\Sale;
+use App\Services\Financial;
 use App\Services\Laboratory;
 use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -27,7 +30,7 @@ use RuntimeException;
  */
 class LabOrderController extends Controller
 {
-    public function __construct(private Laboratory $laboratory, private CurrentCompany $current) {}
+    public function __construct(private Laboratory $laboratory, private CurrentCompany $current, private Financial $financial) {}
 
     /**
      * Laboratórios ligados a esta ótica (para escolher no pedido).
@@ -90,7 +93,9 @@ class LabOrderController extends Controller
      */
     public function store(LabOrderRequest $request): JsonResponse
     {
-        $order = LabOrder::create([...$this->fields($request), 'user_id' => $request->user()->id]);
+        $fields = $this->fields($request);
+        $sale = $this->saleFor($fields);
+        $order = $this->withSale($sale, fn () => LabOrder::create([...$fields, 'user_id' => $request->user()->id]));
 
         return (new LabOrderResource($order->fresh(['lab', 'client', 'user', 'cityVisit.city'])))->response()->setStatusCode(201);
     }
@@ -104,12 +109,16 @@ class LabOrderController extends Controller
             throw ValidationException::withMessages(['status' => 'Só o pedido pendente de envio pode ser editado.']);
         }
         $fields = $this->fields($request);
+        if ($labOrder->sale_id && (int) $fields['sale_id'] !== $labOrder->sale_id) {
+            throw ValidationException::withMessages(['sale_id' => 'O óculos não troca de venda.']);
+        }
+        $sale = $this->saleFor($fields);
         if ($fields['prescription_path'] === null) {
             unset($fields['prescription_path']);
         } elseif ($labOrder->prescription_path) {
             Storage::disk('local')->delete($labOrder->prescription_path);
         }
-        $labOrder->update([...$fields, 'send_error' => null]);
+        $this->withSale($sale, fn () => $labOrder->update([...$fields, 'send_error' => null]));
 
         return $this->show($labOrder);
     }
@@ -270,6 +279,13 @@ class LabOrderController extends Controller
      */
     private function trySend(LabOrder $order): ?string
     {
+        // Óculos de venda vai ao laboratório só com a venda lançada (cliente que paga e entrada; 07/11/2026).
+        if ($order->sale_id && ! Sale::whereKey($order->sale_id)->whereNotNull('launched_at')->exists()) {
+            $message = 'Venda ainda não lançada: lance a venda (com a entrada) antes de enviar.';
+            $order->update(['send_error' => $message]);
+
+            return $message;
+        }
         try {
             $this->laboratory->send($order);
 
@@ -295,9 +311,45 @@ class LabOrderController extends Controller
             'lab_connection_id' => $request->integer('lab_connection_id'),
             'client_id' => $request->integer('client_id'),
             'city_visit_id' => $request->validated('city_visit_id'),
-            'payload' => collect($request->safe()->except(['lab_connection_id', 'client_id', 'service_place', 'city_visit_id', 'prescription']))->all(),
+            'sale_id' => $request->validated('sale_id'),
+            'price' => $request->validated('price'),
+            'payload' => collect($request->safe()->except(['lab_connection_id', 'client_id', 'service_place', 'city_visit_id', 'sale_id', 'price', 'prescription']))->all(),
             'prescription_path' => $request->file('prescription')?->store("companies/{$this->current->require()->id}/prescriptions", 'local'),
         ];
+    }
+
+    /**
+     * A venda do óculos (se vier), conferida: aceita mudanças de óculos e valores e é do mesmo atendimento do pedido.
+     *
+     * @param  array<string, mixed>  $fields
+     */
+    private function saleFor(array $fields): ?Sale
+    {
+        if (! $fields['sale_id']) {
+            return null;
+        }
+        $sale = Sale::with(SaleController::RELATIONS)->findOrFail($fields['sale_id']);
+        SaleController::assertOpen($sale);
+        if ($sale->city_visit_id !== ($fields['city_visit_id'] ? (int) $fields['city_visit_id'] : null)) {
+            throw ValidationException::withMessages(['sale_id' => $sale->city_visit_id ? 'O óculos tem de ser do atendimento da venda.' : 'Venda da loja: o óculos é avulso (sem atendimento).']);
+        }
+
+        return $sale;
+    }
+
+    /**
+     * Grava e, se a venda já foi lançada, ajusta o Financeiro junto (se ele recusar, desfaz).
+     */
+    private function withSale(?Sale $sale, callable $action): mixed
+    {
+        return $this->run(fn () => DB::transaction(function () use ($sale, $action) {
+            $result = $action();
+            if ($sale?->launched_at) {
+                $this->financial->sync($sale->refresh()->load(SaleController::RELATIONS));
+            }
+
+            return $result;
+        }));
     }
 
     /**
@@ -320,11 +372,18 @@ class LabOrderController extends Controller
         if (! $labOrder->cancelable() || $labOrder->status === 'canceled') {
             throw ValidationException::withMessages(['status' => "Pedido {$labOrder->status_label}: o laboratório já começou. Para cancelar, fale com o laboratório."]);
         }
-        if (! $labOrder->sent_at) {
-            $labOrder->update(['status' => 'canceled', 'status_label' => 'Cancelada', 'cancel_reason' => $reason, 'status_at' => now()]);
-        } else {
-            $this->run(fn () => $this->laboratory->cancel($labOrder, $reason));
+        // Óculos de venda: pendente só enquanto a venda aceita mudanças; a venda (e o Financeiro) se ajusta junto.
+        $sale = $labOrder->sale_id ? Sale::with(SaleController::RELATIONS)->find($labOrder->sale_id) : null;
+        if ($sale && ! $labOrder->sent_at) {
+            SaleController::assertOpen($sale);
         }
+        $this->withSale($sale, function () use ($labOrder, $reason) {
+            if (! $labOrder->sent_at) {
+                $labOrder->update(['status' => 'canceled', 'status_label' => 'Cancelada', 'cancel_reason' => $reason, 'status_at' => now()]);
+            } else {
+                $this->laboratory->cancel($labOrder, $reason);
+            }
+        });
 
         return $this->show($labOrder);
     }

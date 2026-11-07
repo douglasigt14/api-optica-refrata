@@ -28,6 +28,10 @@ class LabOrderRequest extends FormRequest
                 $this->input('service_place') === 'external' ? 'required' : 'prohibited',
                 'nullable', 'integer', CurrentCompany::exists('city_visits')->whereNot('status', 'cancelled')->whereNull('orders_closed_at'),
             ],
+            // Óculos de uma venda (a promissória, 07/11/2026): o paciente é o `client_id` e o valor é o `price`. O
+            // atendimento tem de ser o da venda (vazio = venda da loja); o controller confere.
+            'sale_id' => ['nullable', 'integer', CurrentCompany::exists('sales')->whereNull('canceled_at')->whereNull('delivered_at')],
+            'price' => ['nullable', 'required_with:sale_id', 'numeric', 'gt:0', 'max:999999.99'],
             'prescription' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,heic,pdf', 'max:10240'],
             'lens_type' => ['required', 'string', 'max:30'],
             'bifocal_style' => ['nullable', 'string', 'max:30'],
@@ -67,6 +71,9 @@ class LabOrderRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'sale_id.exists' => 'Venda não encontrada (ou já entregue ou cancelada).',
+            'price.required_with' => 'Informe o valor do óculos.',
+            'price.gt' => 'Informe o valor do óculos.',
             'lab_connection_id.required' => 'Escolha o laboratório.',
             'lab_connection_id.exists' => 'Escolha um laboratório ligado a esta ótica.',
             'client_id.required' => 'Escolha o cliente.',

@@ -14,9 +14,11 @@ use Illuminate\Support\Str;
  * Ótica (pessoa jurídica) de um grupo, espelho do Console (`console_id`): parceiros, indicações, atendimentos e
  * situações são de uma ótica. Criada e atualizada pelo Console (`/api/platform/companies/{uid}`); inativa, ninguém dela
  * entra (equipe nem parceiros). `invite_code`: o código que o parceiro usa no cadastro (link de convite).
- * `financial_url`: painel do financeiro, quando a ótica o usa (item Financeiro no menu do admin).
+ * `financial_url`: painel do financeiro, quando a ótica o usa (item Financeiro no menu do admin). `financial_api_url` e
+ * `financial_token`: a ligação com a API do financeiro (vendas, 07/11/2026), gravada pelo Console. `sale_accounts`: a conta
+ * do financeiro de cada forma de pagamento das vendas (`cash`, `pix`, `card`), escolhida pelo admin.
  */
-#[Fillable(['group_id', 'console_id', 'name', 'trade_name', 'document', 'invite_code', 'active', 'financial_url'])]
+#[Fillable(['group_id', 'console_id', 'name', 'trade_name', 'document', 'invite_code', 'active', 'financial_url', 'financial_api_url', 'financial_token', 'sale_accounts'])]
 class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */
@@ -24,7 +26,7 @@ class Company extends Model
 
     protected function casts(): array
     {
-        return ['active' => 'boolean'];
+        return ['active' => 'boolean', 'financial_token' => 'encrypted', 'sale_accounts' => 'array'];
     }
 
     /**

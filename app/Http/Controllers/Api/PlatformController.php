@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\Group;
 use App\Models\LabConnection;
+use App\Services\Financial;
 use App\Services\Laboratory;
 use App\Support\CurrentCompany;
 use App\Support\DefaultLeadStatuses;
@@ -80,6 +81,8 @@ class PlatformController extends Controller
             'active' => $company->active,
             'invite_code' => $company->invite_code,
             'created' => $created,
+            // Ligada ao financeiro (vendas)? O Console liga sozinho quando a empresa usa o Financeiro.
+            'financial_connected' => filled($company->fresh()->financial_api_url),
         ]], $created ? 201 : 200);
     }
 
@@ -98,6 +101,33 @@ class PlatformController extends Controller
             LabConnection::updateOrCreate(['lab_console_id' => $labConsoleId], ['name' => $name, 'inbound_token_hash' => LabConnection::hash($token)]);
 
             return response()->json(['data' => ['inbound_token' => $token]]);
+        });
+    }
+
+    /**
+     * Ligação com o financeiro (vendas da promissória, 07/11/2026): grava o endereço da API e a chave gerada lá e testa
+     * pelas contas. Vazio desliga.
+     */
+    public function financialConnection(Request $request, Financial $financial, string $consoleId): JsonResponse
+    {
+        $company = Company::where('console_id', $consoleId)->firstOrFail();
+        $data = $request->validate([
+            'url' => ['nullable', 'required_with:token', 'url:http,https', 'max:255'],
+            'token' => ['nullable', 'required_with:url', 'string', 'min:20', 'max:200'],
+        ]);
+        $company->update(['financial_api_url' => isset($data['url']) ? rtrim($data['url'], '/') : null, 'financial_token' => $data['token'] ?? null]);
+        if (! $company->financial_api_url) {
+            return response()->json(['data' => ['connected' => false]]);
+        }
+
+        return app(CurrentCompany::class)->within($company, function () use ($financial, $company) {
+            try {
+                $accounts = $financial->accounts($company);
+            } catch (RuntimeException $error) {
+                throw ValidationException::withMessages(['connection' => $error->getMessage()]);
+            }
+
+            return response()->json(['data' => ['connected' => true, 'accounts' => count($accounts)]]);
         });
     }
 

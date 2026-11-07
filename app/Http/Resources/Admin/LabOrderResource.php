@@ -38,6 +38,9 @@ class LabOrderResource extends JsonResource
             'send_error' => $this->send_error,
             'lab_number' => $this->lab_number,
             // Lote do laboratório em que a OS entrou ("LT000045"), ou null (avulsa).
+            // Óculos de uma venda (a promissória): a venda e o valor do óculos.
+            'sale_id' => $this->sale_id,
+            'price' => $this->price,
             'lab_batch' => $this->lab_batch,
             'status' => $this->status,
             'status_label' => $this->sent_at || $this->status === 'canceled' ? $this->status_label : 'Pendente de envio',

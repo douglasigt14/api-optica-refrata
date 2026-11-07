@@ -19,7 +19,9 @@ class ClientResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'cpf' => $this->cpf,
             'phone_number' => $this->phone_number,
+            'address' => $this->address,
             'birth_date' => $this->birth_date?->toDateString(),
             'city' => $this->city?->only(['id', 'name', 'state']),
             'lead_id' => $this->lead_id,

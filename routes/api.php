@@ -25,6 +25,8 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
     Route::put('/companies/{consoleId}', [PlatformController::class, 'upsertCompany'])->name('companies.upsert');
     Route::put('/companies/{consoleId}/labs/{labConsoleId}', [PlatformController::class, 'labConnection'])->name('companies.lab');
     Route::put('/companies/{consoleId}/labs/{labConsoleId}/token', [PlatformController::class, 'labToken'])->name('companies.lab-token');
+    // Ligação com o financeiro (vendas, 07/11/2026): endereço e chave gerada lá, gravados pelo Console.
+    Route::put('/companies/{consoleId}/financial-connection', [PlatformController::class, 'financialConnection'])->name('companies.financial-connection');
     // Usuários da equipe vindos do Console (passo 7 do roteiro).
     Route::put('/users/{consoleId}', [PlatformUserController::class, 'upsert'])->name('users.upsert');
     // Login único pelo painel único (passo 4): o Console pede o token da pessoa depois de conferir a senha.
@@ -93,6 +95,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/labs', [Admin\LabOrderController::class, 'labs'])->name('labs.index');
             Route::get('/labs/{labConnection}/catalog', [Admin\LabOrderController::class, 'catalog'])->name('labs.catalog');
             Route::get('/lab-orders', [Admin\LabOrderController::class, 'index'])->name('lab-orders.index');
+            // Vendas — a promissória (07/11/2026): rascunho, lançar (gera o a receber no Financeiro), pagamentos e entregar.
+            Route::get('/sales', [Admin\SaleController::class, 'index'])->name('sales.index');
+            Route::post('/sales', [Admin\SaleController::class, 'store'])->name('sales.store');
+            Route::get('/sales/{sale}', [Admin\SaleController::class, 'show'])->name('sales.show');
+            Route::patch('/sales/{sale}', [Admin\SaleController::class, 'update'])->name('sales.update');
+            Route::post('/sales/{sale}/payments', [Admin\SaleController::class, 'addPayment'])->name('sales.payments.store');
+            Route::delete('/sales/{sale}/payments/{payment}', [Admin\SaleController::class, 'removePayment'])->name('sales.payments.destroy');
+            Route::post('/sales/{sale}/launch', [Admin\SaleController::class, 'launch'])->name('sales.launch');
+            Route::post('/sales/{sale}/deliver', [Admin\SaleController::class, 'deliver'])->name('sales.deliver');
             // Pedidos por atendimento (07/11/2026): os atendimentos que recebem pedidos, enviar todos juntos e encerrar.
             Route::get('/lab-order-visits', [Admin\LabOrderController::class, 'visits'])->name('lab-order-visits.index');
             Route::get('/lab-order-visits/{cityVisit}', [Admin\LabOrderController::class, 'visit'])->name('lab-order-visits.show');
@@ -112,6 +123,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::middleware('role:admin')->group(function () {
             Route::post('/city-visits', [Admin\CityVisitController::class, 'store'])->name('city-visits.store');
+            Route::post('/sales/{sale}/cancel', [Admin\SaleController::class, 'cancel'])->name('sales.cancel');
+            // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
+            Route::get('/sale-settings', [Admin\SaleController::class, 'settings'])->name('sale-settings.show');
+            Route::put('/sale-settings', [Admin\SaleController::class, 'saveSettings'])->name('sale-settings.update');
             Route::patch('/city-visits/{cityVisit}', [Admin\CityVisitController::class, 'update'])->name('city-visits.update');
 
             Route::post('/prospectors', [Admin\ProspectorController::class, 'store'])->name('prospectors.store');

@@ -33,7 +33,7 @@ class ClientController extends Controller
             ->when($filters['city_id'] ?? null, fn ($q, $id) => $q->where('city_id', $id))
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {
                 $digits = preg_replace('/\D/', '', $search);
-                $q->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->when($digits !== '', fn ($q) => $q->orWhere('phone_number', 'like', "%{$digits}%")));
+                $q->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->when($digits !== '', fn ($q) => $q->orWhere('phone_number', 'like', "%{$digits}%")->orWhere('cpf', 'like', "{$digits}%")));
             })
             ->orderBy('name')
             ->orderBy('id')

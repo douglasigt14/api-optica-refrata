@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `city_visit_id` = o atendimento escolhido (vai junto; com lote aberto dele lá, a OS entra no lote: `lab_batch`).
  */
 #[Fillable([
-    'lab_connection_id', 'client_id', 'city_visit_id', 'user_id', 'payload', 'prescription_path', 'sent_at', 'send_error',
+    'lab_connection_id', 'client_id', 'city_visit_id', 'sale_id', 'price', 'user_id', 'payload', 'prescription_path', 'sent_at', 'send_error',
     'lab_number', 'lab_batch', 'status', 'status_label', 'awaits_frame', 'cancel_reason', 'status_at',
 ])]
 class LabOrder extends Model
@@ -31,6 +31,7 @@ class LabOrder extends Model
             'sent_at' => 'datetime',
             'status_at' => 'datetime',
             'awaits_frame' => 'boolean',
+            'price' => 'decimal:2',
         ];
     }
 
@@ -84,6 +85,16 @@ class LabOrder extends Model
     /**
      * @return BelongsTo<CityVisit, $this>
      */
+    /**
+     * Venda (a promissória) de que este óculos faz parte; null = pedido sem venda.
+     *
+     * @return BelongsTo<Sale, $this>
+     */
+    public function sale(): BelongsTo
+    {
+        return $this->belongsTo(Sale::class);
+    }
+
     public function cityVisit(): BelongsTo
     {
         return $this->belongsTo(CityVisit::class);

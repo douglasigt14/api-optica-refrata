@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Rules\Cpf;
 use App\Support\CurrentCompany;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -19,7 +20,10 @@ class ClientRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:120'],
-            'phone_number' => ['required', 'digits_between:10,11'],
+            // Opcional: o paciente pode ser outra pessoa (ex.: uma criança). Quem paga a venda precisa (ver SaleRequest).
+            'phone_number' => ['nullable', 'digits_between:10,11'],
+            'cpf' => ['nullable', 'digits:11', new Cpf, CurrentCompany::unique('clients', 'cpf')->ignore($this->route('client'))],
+            'address' => ['nullable', 'string', 'max:200'],
             'city_id' => ['required', 'integer', CurrentCompany::servedCity()],
             'birth_date' => ['nullable', 'date', 'before:today'],
         ];
@@ -32,7 +36,8 @@ class ClientRequest extends FormRequest
     {
         return [
             'name.required' => 'Informe o nome.',
-            'phone_number.required' => 'Informe o telefone.',
+            'cpf.digits' => 'CPF com 11 dígitos.',
+            'cpf.unique' => 'Já há um cliente com este CPF.',
             'phone_number.digits_between' => 'Telefone com DDD: 10 ou 11 dígitos.',
             'city_id.required' => 'Escolha a cidade.',
             'city_id.exists' => 'Escolha uma cidade atendida pela ótica.',
@@ -43,7 +48,10 @@ class ClientRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         if (is_string($this->phone_number)) {
-            $this->merge(['phone_number' => preg_replace('/\D/', '', $this->phone_number)]);
+            $this->merge(['phone_number' => preg_replace('/\D/', '', $this->phone_number) ?: null]);
+        }
+        if (is_string($this->cpf)) {
+            $this->merge(['cpf' => preg_replace('/\D/', '', $this->cpf) ?: null]);
         }
     }
 }

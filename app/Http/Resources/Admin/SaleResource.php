@@ -40,6 +40,7 @@ class SaleResource extends JsonResource
             'notes' => $this->notes,
             'orders' => $this->orders->map(fn (LabOrder $order) => [
                 'id' => $order->id,
+                'number' => $order->number,
                 'patient' => $order->client ? ['id' => $order->client->id, 'name' => $order->client->name, 'birth_date' => $order->client->birth_date?->toDateString()] : null,
                 'price' => $order->price,
                 'pending' => $order->pending(),

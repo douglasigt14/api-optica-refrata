@@ -42,7 +42,7 @@ class Laboratory
         $data = self::withoutNulls([
             ...$order->payload,
             'external_id' => (string) $order->id,
-            'optical_order_number' => (string) $order->id,
+            'optical_order_number' => (string) $order->number,
             'patient_reference' => $order->client->name,
             'city_visit_id' => $order->city_visit_id,
             'open_batch' => $visit !== null,

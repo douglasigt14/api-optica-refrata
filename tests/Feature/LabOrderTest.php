@@ -169,6 +169,38 @@ class LabOrderTest extends TestCase
         $this->postJson("/api/admin/lab-orders/{$order['id']}/cancel", ['reason' => 'Desistiu'])->assertUnprocessable();
     }
 
+    /**
+     * OS de Ótica (09/11/2026): cada empresa tem a sua sequência, começando do 1; vai ao laboratório como
+     * `optical_order_number`, e o `external_id` continua sendo o id (único na instalação).
+     */
+    public function test_each_company_numbers_its_own_orders(): void
+    {
+        $this->link();
+        $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
+        // Outra ótica já tem pedidos: não mexe na sequência desta.
+        $other = Company::factory()->create();
+        $lab = LabConnection::first()->id;
+        app(CurrentCompany::class)->within($other, function () use ($client, $lab) {
+            foreach ([1, 2, 3] as $i) {
+                LabOrder::create(['lab_connection_id' => $lab, 'client_id' => $client->id, 'payload' => []]);
+            }
+        });
+        $this->assertSame([1, 2, 3], LabOrder::withoutGlobalScopes()->where('company_id', $other->id)->orderBy('id')->pluck('number')->all());
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+
+        $first = $this->postJson('/api/admin/lab-orders', $this->order($client))->assertCreated()->assertJsonPath('data.number', 1)->json('data');
+        $second = $this->postJson('/api/admin/lab-orders', $this->order($client))->assertCreated()->assertJsonPath('data.number', 2)->json('data');
+        $this->assertNotSame(1, $first['id']);
+
+        $this->postJson("/api/admin/lab-orders/{$second['id']}/send")->assertOk();
+        $fields = collect($this->sent)->last()['body'];
+        $this->assertSame('2', $fields['optical_order_number']);
+        $this->assertSame((string) $second['id'], $fields['external_id']);
+
+        // A busca pela OS de Ótica usa o número da empresa.
+        $this->getJson('/api/admin/lab-orders?search=2')->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $second['id']);
+    }
+
     public function test_pending_order_is_edited_before_sending(): void
     {
         Storage::fake('local');

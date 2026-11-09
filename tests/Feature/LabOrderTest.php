@@ -118,6 +118,24 @@ class LabOrderTest extends TestCase
         $this->getJson("/api/admin/clients/{$theirs->id}")->assertNotFound();
     }
 
+    /** Apagar cliente (09/11/2026): só o admin, e só quem não tem pedido nem venda. */
+    public function test_only_the_admin_deletes_a_client_without_orders(): void
+    {
+        $this->link();
+        $free = Client::create(['name' => 'Sem pedido', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
+        $withOrder = Client::create(['name' => 'Com pedido', 'phone_number' => '88999990001', 'city_id' => $this->city->id]);
+        LabOrder::create(['lab_connection_id' => LabConnection::first()->id, 'client_id' => $withOrder->id, 'payload' => []]);
+
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->deleteJson("/api/admin/clients/{$free->id}")->assertForbidden();
+
+        Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
+        $this->deleteJson("/api/admin/clients/{$withOrder->id}")->assertUnprocessable()->assertJsonValidationErrors(['client' => 'tem pedidos']);
+        $this->deleteJson("/api/admin/clients/{$free->id}")->assertNoContent();
+        $this->assertModelMissing($free);
+        $this->assertModelExists($withOrder);
+    }
+
     public function test_order_is_saved_pending_then_sent_and_the_status_comes_back(): void
     {
         Storage::fake('local');

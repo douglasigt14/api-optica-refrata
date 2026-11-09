@@ -102,6 +102,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::patch('/sales/{sale}', [Admin\SaleController::class, 'update'])->name('sales.update');
             Route::post('/sales/{sale}/payments', [Admin\SaleController::class, 'addPayment'])->name('sales.payments.store');
             Route::delete('/sales/{sale}/payments/{payment}', [Admin\SaleController::class, 'removePayment'])->name('sales.payments.destroy');
+            Route::post('/sales/{sale}/orders', [Admin\SaleController::class, 'attachOrder'])->name('sales.orders.store');
             Route::post('/sales/{sale}/launch', [Admin\SaleController::class, 'launch'])->name('sales.launch');
             Route::post('/sales/{sale}/deliver', [Admin\SaleController::class, 'deliver'])->name('sales.deliver');
             // Pedidos por atendimento (07/11/2026): os atendimentos que recebem pedidos, enviar todos juntos e encerrar.
@@ -110,6 +111,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/lab-order-visits/{cityVisit}/send', [Admin\LabOrderController::class, 'sendVisit'])->name('lab-order-visits.send');
             Route::post('/lab-order-visits/{cityVisit}/close', [Admin\LabOrderController::class, 'closeOrders'])->name('lab-order-visits.close');
             Route::delete('/lab-order-visits/{cityVisit}/close', [Admin\LabOrderController::class, 'reopenOrders'])->name('lab-order-visits.reopen');
+            Route::put('/lab-order-visits/{cityVisit}/delivery', [Admin\SaleController::class, 'visitDelivery'])->name('lab-order-visits.delivery');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
             Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');
@@ -124,6 +126,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('role:admin')->group(function () {
             Route::post('/city-visits', [Admin\CityVisitController::class, 'store'])->name('city-visits.store');
             Route::post('/sales/{sale}/cancel', [Admin\SaleController::class, 'cancel'])->name('sales.cancel');
+            Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
             // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
             Route::get('/sale-settings', [Admin\SaleController::class, 'settings'])->name('sale-settings.show');
             Route::put('/sale-settings', [Admin\SaleController::class, 'saveSettings'])->name('sale-settings.update');

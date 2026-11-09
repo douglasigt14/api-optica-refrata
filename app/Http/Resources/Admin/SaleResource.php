@@ -37,6 +37,8 @@ class SaleResource extends JsonResource
                 'city' => $this->client->city?->name,
             ] : null,
             'expected_delivery_date' => $this->expected_delivery_date->toDateString(),
+            // Ficha do atendimento: a data é a do atendimento (troca-se lá); só a da loja edita a sua.
+            'delivery_from_visit' => $this->city_visit_id !== null,
             'notes' => $this->notes,
             'orders' => $this->orders->map(fn (LabOrder $order) => [
                 'id' => $order->id,

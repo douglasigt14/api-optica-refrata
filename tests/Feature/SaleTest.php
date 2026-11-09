@@ -7,6 +7,7 @@ use App\Models\City;
 use App\Models\CityVisit;
 use App\Models\Client;
 use App\Models\LabConnection;
+use App\Models\LabOrder;
 use App\Models\PlatformAccess;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -103,6 +104,60 @@ class SaleTest extends TestCase
     {
         return $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id, 'city_visit_id' => $this->visit->id, 'expected_delivery_date' => today()->addDays(15)->toDateString(), ...$overrides])
             ->assertCreated()->assertJsonPath('data.status', 'draft')->json('data.id');
+    }
+
+    /**
+     * Entrega prevista do atendimento (09/11/2026): a ficha nasce com a do atendimento (último dia + 5, ou a definida) e
+     * acompanha quando ela muda; nas lançadas, o vencimento no Financeiro também. A da loja continua com a sua.
+     */
+    public function test_expected_delivery_comes_from_the_visit_and_follows_it(): void
+    {
+        $this->visit->update(['visit_date' => '2026-11-16', 'end_date' => '2026-11-17']);
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+
+        // Sem data na ficha do atendimento: a do atendimento (17/11 + 5); a que vier é ignorada.
+        $sale = $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id, 'city_visit_id' => $this->visit->id])
+            ->assertCreated()->assertJsonPath('data.expected_delivery_date', '2026-11-22')->assertJsonPath('data.delivery_from_visit', true)->json('data.id');
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}")->assertJsonPath('data.expected_delivery_date', '2026-11-22');
+        $this->patchJson("/api/admin/sales/{$sale}", ['client_id' => $this->mother->id, 'expected_delivery_date' => '2026-12-30'])->assertOk()->assertJsonPath('data.expected_delivery_date', '2026-11-22');
+        // Da loja: informa a sua.
+        $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id])->assertJsonValidationErrors(['expected_delivery_date']);
+
+        // Lançada: trocar no atendimento troca a ficha e o vencimento do restante no Financeiro.
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 600))->assertCreated();
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200]]])->assertOk();
+        $other = $this->postJson('/api/admin/sales', ['client_id' => $this->child->id, 'city_visit_id' => $this->visit->id])->assertCreated()->json('data.id');
+        $this->financial = [];
+        $this->putJson("/api/admin/lab-order-visits/{$this->visit->id}/delivery", ['expected_delivery_date' => '2026-11-28'])
+            ->assertOk()->assertJsonPath('data.expected_delivery_date', '2026-11-28')->assertJsonPath('data.updated', 2)->assertJsonPath('data.failed', []);
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.expected_delivery_date', '2026-11-28');
+        $this->getJson("/api/admin/sales/{$other}")->assertJsonPath('data.expected_delivery_date', '2026-11-28');
+        $this->assertNotEmpty($this->financial, 'A ficha lançada ajusta o Financeiro.');
+        $this->assertStringContainsString('2026-11-28', json_encode($this->financial));
+        // Ficha nova já nasce com a data nova.
+        $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id, 'city_visit_id' => $this->visit->id])->assertJsonPath('data.expected_delivery_date', '2026-11-28');
+    }
+
+    /** OS do atendimento sem ficha (as de antes da ficha existir) entra na ficha, mesmo já enviada, com o valor. */
+    public function test_an_order_of_the_visit_without_sale_is_attached_to_a_sale(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $sale = $this->newSale();
+        $lab = LabConnection::first()->id;
+        $loose = LabOrder::create(['lab_connection_id' => $lab, 'client_id' => $this->child->id, 'city_visit_id' => $this->visit->id, 'payload' => [], 'sent_at' => now(), 'status' => 'separated', 'status_label' => 'Separada']);
+        $otherVisit = CityVisit::factory()->create(['city_id' => $this->city->id]);
+        $elsewhere = LabOrder::create(['lab_connection_id' => $lab, 'client_id' => $this->child->id, 'city_visit_id' => $otherVisit->id, 'payload' => []]);
+
+        $this->postJson("/api/admin/sales/{$sale}/orders", ['lab_order_id' => $loose->id])->assertJsonValidationErrors(['price']);
+        $this->postJson("/api/admin/sales/{$sale}/orders", ['lab_order_id' => $elsewhere->id, 'price' => 300])->assertJsonValidationErrors(['lab_order_id']);
+        $this->postJson("/api/admin/sales/{$sale}/orders", ['lab_order_id' => $loose->id, 'price' => 450])
+            ->assertOk()->assertJsonPath('data.total', '450.00')->assertJsonPath('data.orders.0.id', $loose->id)->assertJsonPath('data.locked', true);
+        // Já está numa ficha: não entra de novo.
+        $this->postJson("/api/admin/sales/{$this->newSale()}/orders", ['lab_order_id' => $loose->id, 'price' => 450])->assertJsonValidationErrors(['lab_order_id']);
+        // Ficha da loja não recebe.
+        $store = $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id, 'expected_delivery_date' => today()->addDays(5)->toDateString()])->json('data.id');
+        $this->postJson("/api/admin/sales/{$store}/orders", ['lab_order_id' => $elsewhere->id, 'price' => 300])->assertJsonValidationErrors(['lab_order_id' => 'Só a ficha de um atendimento']);
     }
 
     public function test_draft_with_two_glasses_is_launched_with_the_down_payment_and_adjusts_the_financial(): void

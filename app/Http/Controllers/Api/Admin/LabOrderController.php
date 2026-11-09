@@ -61,6 +61,7 @@ class LabOrderController extends Controller
             'city_visit_id' => ['nullable', 'integer'],
             // Só os avulsos (da loja, sem atendimento).
             'standalone' => ['nullable', 'boolean'],
+            'without_sale' => ['nullable', 'boolean'],
         ]);
 
         $orders = LabOrder::query()
@@ -70,6 +71,8 @@ class LabOrderController extends Controller
             ->when($filters['client_id'] ?? null, fn ($q, int $id) => $q->where('client_id', $id))
             ->when($filters['city_visit_id'] ?? null, fn ($q, int $id) => $q->where('city_visit_id', $id))
             ->when($request->boolean('standalone'), fn ($q) => $q->whereNull('city_visit_id'))
+            // Os que não são de venda (no atendimento: o grupo "Sem venda").
+            ->when($request->boolean('without_sale'), fn ($q) => $q->whereNull('sale_id'))
             // Pendentes de envio (salvos, não enviados, não cancelados).
             ->when($request->boolean('not_sent'), fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')))
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {

@@ -247,6 +247,8 @@ class LabOrderTest extends TestCase
         $this->postJson('/api/admin/lab-orders/send', ['ids' => [$external[0], $internal[0]]])->assertJsonValidationErrors(['status']);
         $this->getJson("/api/admin/lab-orders?city_visit_id={$visit->id}")->assertJsonCount(2, 'data');
         $this->getJson('/api/admin/lab-orders?standalone=1')->assertJsonCount(2, 'data');
+        // Sem venda (no atendimento, o grupo "Sem venda").
+        $this->getJson("/api/admin/lab-orders?city_visit_id={$visit->id}&without_sale=1")->assertJsonCount(2, 'data');
 
         $this->sent = [];
         $this->postJson("/api/admin/lab-order-visits/{$visit->id}/send")->assertOk()->assertJsonPath('data.sent', 2)->assertJsonPath('data.results.0.error', null);

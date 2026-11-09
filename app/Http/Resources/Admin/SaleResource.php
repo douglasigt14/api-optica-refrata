@@ -51,6 +51,13 @@ class SaleResource extends JsonResource
                 // Para a lista do atendimento (vendas em acordeão, 09/11/2026).
                 'lab' => $order->lab ? ['id' => $order->lab->id, 'name' => $order->lab->name] : null,
                 'lab_batch' => $order->lab_batch,
+                // Lente pedida (os códigos; o nome vem do catálogo do laboratório, na tela).
+                'lens' => [
+                    'lens_type' => $order->payload['lens_type'] ?? null,
+                    'bifocal_style' => $order->payload['bifocal_style'] ?? null,
+                    'material' => $order->payload['material'] ?? null,
+                    'refractive_index' => $order->payload['refractive_index'] ?? null,
+                ],
                 'awaits_frame' => $order->awaits_frame,
                 'created_at' => $order->created_at?->toIso8601String(),
             ])->values(),

@@ -118,7 +118,8 @@ class SaleTest extends TestCase
         $this->getJson("/api/admin/sales/{$sale}")->assertOk()->assertJsonPath('data.total', '1200.00')->assertJsonPath('data.orders.1.patient.name', 'Pedro Talisson Silva Santos');
         // Na lista (tela do atendimento, vendas em acordeão): os óculos com o laboratório e a OS de Ótica; até 100 por página.
         $this->getJson('/api/admin/sales?per_page=100')->assertOk()->assertJsonPath('meta.per_page', 100)
-            ->assertJsonPath('data.0.orders.0.number', 1)->assertJsonPath('data.0.orders.0.lab.name', fn ($name) => filled($name));
+            ->assertJsonPath('data.0.orders.0.number', 1)->assertJsonPath('data.0.orders.0.lab.name', fn ($name) => filled($name))
+            ->assertJsonPath('data.0.orders.0.lens.lens_type', fn ($type) => filled($type));
         $this->getJson('/api/admin/sales?per_page=101')->assertJsonValidationErrors(['per_page']);
         // Rascunho: nada vai ao Financeiro, e os óculos não vão ao laboratório.
         $this->assertSame([], $this->financial);

@@ -51,12 +51,18 @@ class SaleController extends Controller
             })
             ->latest('id')
             ->paginate($filters['per_page'] ?? 25);
+        // Baixas feitas no Financeiro entram nas fichas da página (09/11/2026).
+        if ($this->financial->pull($sales->getCollection())) {
+            $sales->getCollection()->each->load('payments');
+        }
 
         return SaleResource::collection($sales);
     }
 
     public function show(Sale $sale): SaleResource
     {
+        $this->financial->pull([$sale]);
+
         return new SaleResource($sale->load(self::RELATIONS));
     }
 
@@ -98,6 +104,10 @@ class SaleController extends Controller
     {
         $cityVisit->load('city');
         $sales = Sale::query()->where('city_visit_id', $cityVisit->id)->with(['client', 'orders', 'payments'])->orderBy('id')->get();
+        // Baixas feitas no Financeiro entram antes de somar (09/11/2026).
+        if ($this->financial->pull($sales)) {
+            $sales->each->load('payments');
+        }
         $money = fn (int $cents) => number_format($cents / 100, 2, '.', '');
         $cents = fn ($amount) => (int) round(((float) $amount) * 100);
 
@@ -138,7 +148,9 @@ class SaleController extends Controller
                     'amount' => $payment->amount,
                     'installments' => $payment->installments,
                     'paid_on' => $payment->paid_on->toDateString(),
+                    'from_financial' => $payment->from_financial,
                 ])->values(),
+                'settled' => $status === 'launched' && $sale->totalCents() > 0 && $sale->remainingCents() === 0,
                 'launched_at' => $sale->launched_at?->toIso8601String(),
                 'delivered_at' => $sale->delivered_at?->toIso8601String(),
             ];
@@ -223,6 +235,7 @@ class SaleController extends Controller
     {
         $this->assertOpen($sale, items: false);
         $line = $this->validatePayment($request->all(), '');
+        $this->pullStrict($sale);
         if ($this->cents($line['amount']) > $sale->load(self::RELATIONS)->remainingCents()) {
             throw ValidationException::withMessages(['amount' => 'O pagamento passa do que falta pagar.']);
         }
@@ -234,6 +247,9 @@ class SaleController extends Controller
     {
         $this->assertOpen($sale, items: false);
         abort_unless($payment->sale_id === $sale->id, 404);
+        if ($payment->financial_payment_id) {
+            throw ValidationException::withMessages(['payment' => 'Baixa feita no Financeiro: para desfazer, estorne lá.']);
+        }
 
         return $this->change($sale, fn () => $payment->delete());
     }
@@ -246,11 +262,11 @@ class SaleController extends Controller
     {
         $sale->load(self::RELATIONS);
         if ($sale->status() !== 'draft') {
-            throw ValidationException::withMessages(['status' => 'Esta venda já foi lançada.']);
+            throw ValidationException::withMessages(['status' => 'Esta ficha já foi lançada.']);
         }
         $lines = $this->validatePayments($request);
         if ($sale->activeOrders()->isEmpty()) {
-            throw ValidationException::withMessages(['orders' => 'Adicione pelo menos um óculos à venda.']);
+            throw ValidationException::withMessages(['orders' => 'Adicione pelo menos um óculos à ficha.']);
         }
         if ($sale->activeOrders()->contains(fn (LabOrder $order) => (float) $order->price <= 0)) {
             throw ValidationException::withMessages(['orders' => 'Informe o valor de todos os óculos.']);
@@ -259,7 +275,7 @@ class SaleController extends Controller
             throw ValidationException::withMessages(['client_id' => 'Complete o cadastro do cliente que paga: CPF e telefone.']);
         }
         if (collect($lines)->sum(fn ($line) => $this->cents($line['amount'])) > $sale->totalCents()) {
-            throw ValidationException::withMessages(['payments' => 'A entrada passa do valor da venda.']);
+            throw ValidationException::withMessages(['payments' => 'A entrada passa do valor da ficha.']);
         }
 
         return $this->change($sale, function () use ($sale, $lines, $request) {
@@ -277,9 +293,12 @@ class SaleController extends Controller
     {
         $sale->load(self::RELATIONS);
         if ($sale->status() !== 'launched') {
-            throw ValidationException::withMessages(['status' => $sale->status() === 'draft' ? 'Lance a venda antes de entregar.' : 'Esta venda não pode ser entregue.']);
+            throw ValidationException::withMessages(['status' => $sale->status() === 'draft' ? 'Lance a ficha antes de entregar.' : 'Esta ficha não pode ser entregue.']);
         }
         $lines = $this->validatePayments($request);
+        // O que falta já com as baixas feitas no Financeiro (quitada lá: entrega sem receber nada).
+        $this->pullStrict($sale);
+        $sale->load(self::RELATIONS);
         $paying = collect($lines)->sum(fn ($line) => $this->cents($line['amount']));
         if ($paying !== $sale->remainingCents()) {
             throw ValidationException::withMessages(['payments' => 'Na entrega, receba o que falta: '.number_format($sale->remainingCents() / 100, 2, ',', '.').'.']);
@@ -302,16 +321,16 @@ class SaleController extends Controller
         $reason = $request->validate(['reason' => ['required', 'string', 'max:200']], ['reason.required' => 'Informe o motivo do cancelamento.'])['reason'];
         $sale->load(self::RELATIONS);
         if ($sale->canceled_at || $sale->delivered_at) {
-            throw ValidationException::withMessages(['status' => 'Esta venda não pode ser cancelada.']);
+            throw ValidationException::withMessages(['status' => 'Esta ficha não pode ser cancelada.']);
         }
         if ($sale->locked()) {
-            throw ValidationException::withMessages(['status' => 'Algum óculos desta venda já foi ao laboratório: não dá para cancelar.']);
+            throw ValidationException::withMessages(['status' => 'Algum óculos desta ficha já foi ao laboratório: não dá para cancelar.']);
         }
 
         return $this->run(function () use ($sale, $reason) {
             DB::transaction(function () use ($sale, $reason) {
                 foreach ($sale->activeOrders() as $order) {
-                    $order->update(['status' => 'canceled', 'status_label' => 'Cancelada', 'cancel_reason' => "Venda cancelada: {$reason}", 'status_at' => now()]);
+                    $order->update(['status' => 'canceled', 'status_label' => 'Cancelada', 'cancel_reason' => "Ficha cancelada: {$reason}", 'status_at' => now()]);
                 }
                 $sale->update(['canceled_at' => now(), 'cancel_reason' => $reason]);
                 if ($sale->launched_at) {
@@ -378,13 +397,13 @@ class SaleController extends Controller
     {
         $sale->loadMissing('orders');
         if ($sale->canceled_at) {
-            throw ValidationException::withMessages(['sale_id' => 'Venda cancelada.']);
+            throw ValidationException::withMessages(['sale_id' => 'Ficha cancelada.']);
         }
         if ($sale->delivered_at) {
-            throw ValidationException::withMessages(['sale_id' => 'Venda já entregue ao cliente.']);
+            throw ValidationException::withMessages(['sale_id' => 'Ficha já entregue ao cliente.']);
         }
         if ($items && $sale->locked()) {
-            throw ValidationException::withMessages(['sale_id' => 'Algum óculos desta venda já foi ao laboratório: óculos e valores não mudam mais.']);
+            throw ValidationException::withMessages(['sale_id' => 'Algum óculos desta ficha já foi ao laboratório: óculos e valores não mudam mais.']);
         }
     }
 
@@ -394,6 +413,10 @@ class SaleController extends Controller
     private function change(Sale $sale, callable $action, bool $force = false): SaleResource
     {
         return $this->run(function () use ($sale, $action, $force) {
+            // Antes de mudar, as baixas feitas no Financeiro entram na ficha (senão o ajuste lá seria recusado).
+            if ($this->financial->pull([$sale], strict: true)) {
+                $sale->load(self::RELATIONS);
+            }
             DB::transaction(function () use ($sale, $action, $force) {
                 $action();
                 $sale->refresh()->load(self::RELATIONS);
@@ -404,6 +427,13 @@ class SaleController extends Controller
 
             return $this->show($sale->refresh());
         });
+    }
+
+    /** Puxa as baixas feitas no Financeiro antes de conferir o que falta (falha vira erro na tela). */
+    private function pullStrict(Sale $sale): void
+    {
+        $this->run(fn () => $this->financial->pull([$sale], strict: true));
+        $sale->unsetRelation('payments');
     }
 
     private function run(callable $action): mixed

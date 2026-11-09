@@ -71,10 +71,15 @@ class SaleResource extends JsonResource
                 'amount' => $payment->amount,
                 'installments' => $payment->installments,
                 'paid_on' => $payment->paid_on->toDateString(),
+                // Baixa feita no Financeiro (09/11/2026); enquanto não volta no estado da ficha, só se estorna lá.
+                'from_financial' => $payment->from_financial,
+                'removable' => $payment->financial_payment_id === null,
             ])->values(),
             'total' => $money($this->totalCents()),
             'paid' => $money($this->paidCents()),
             'remaining' => $money($this->remainingCents()),
+            // Lançada e tudo pago (09/11/2026): "Quitado". Quitar não é entregar.
+            'settled' => $this->status() === 'launched' && $this->totalCents() > 0 && $this->remainingCents() === 0,
             'launched_at' => $this->launched_at?->toIso8601String(),
             'delivered_at' => $this->delivered_at?->toIso8601String(),
             'canceled_at' => $this->canceled_at?->toIso8601String(),

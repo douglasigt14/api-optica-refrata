@@ -29,6 +29,12 @@ class SaleTest extends TestCase
     /** @var list<array{url: string, method: string, body: array<string, mixed>}> */
     private array $financial = [];
 
+    /** Baixas feitas no Financeiro, por ficha (o que `GET …/sales/payments` devolve). @var array<string, mixed> */
+    private array $remote = [];
+
+    /** @var list<array<string, mixed>> */
+    private array $pulls = [];
+
     /** Resposta do financeiro: 'ok' ou 'down'. */
     private string $fin = 'ok';
 
@@ -49,6 +55,12 @@ class SaleTest extends TestCase
         Http::fake(function (Request $request) {
             $host = parse_url($request->url(), PHP_URL_HOST);
             $path = parse_url($request->url(), PHP_URL_PATH);
+            if ($host === 'fin.test' && $path === '/api/integrations/optica/sales/payments') {
+                // A ficha puxa as baixas feitas no Financeiro (09/11/2026): à parte das chamadas que mudam algo lá.
+                $this->pulls[] = $request->data();
+
+                return $this->fin === 'down' ? Http::response(['message' => 'Server Error'], 500) : Http::response(['data' => (object) $this->remote]);
+            }
             if ($host === 'fin.test') {
                 $this->financial[] = ['url' => $path, 'method' => $request->method(), 'body' => $request->data()];
                 if ($this->fin === 'down') {
@@ -173,6 +185,64 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.totals.methods.2.amount', '100.00');
     }
 
+    /** Baixa feita no Financeiro (09/11/2026): entra na ficha, quita sem entregar e volta ao Financeiro com o id de lá. */
+    public function test_a_payment_made_in_the_financial_enters_the_sale_and_settles_it_without_delivering(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 600))->assertCreated();
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200]]])->assertOk()->assertJsonPath('data.settled', false);
+
+        // Baixa dos 400 no Financeiro (conta 1, forma "Pix"): ao abrir, a ficha mostra pago e "Quitado", ainda lançada.
+        $this->remote = [(string) $sale => ['canceled' => false, 'payments' => [['id' => 77, 'amount' => '400.00', 'paid_at' => '2026-11-10', 'account_id' => 1, 'payment_method' => 'Pix']]]];
+        $this->getJson("/api/admin/sales/{$sale}")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'launched')
+            ->assertJsonPath('data.paid', '600.00')
+            ->assertJsonPath('data.remaining', '0.00')
+            ->assertJsonPath('data.settled', true)
+            ->assertJsonPath('data.payments.1.method', 'pix')
+            ->assertJsonPath('data.payments.1.from_financial', true)
+            ->assertJsonPath('data.payments.1.removable', false);
+        // Abrir de novo não duplica; não se apaga por aqui.
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonCount(2, 'data.payments');
+        $remote = $this->getJson("/api/admin/sales/{$sale}")->json('data.payments.1.id');
+        $this->deleteJson("/api/admin/sales/{$sale}/payments/{$remote}")->assertJsonValidationErrors(['payment']);
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/sales-report")->assertJsonPath('data.totals.remaining', '0.00')->assertJsonPath('data.sales.0.settled', true);
+
+        // Entregar sem receber nada; no estado que vai ao Financeiro, a baixa de lá volta com o id e a conta de lá.
+        $this->financial = [];
+        $this->postJson("/api/admin/sales/{$sale}/deliver", ['payments' => []])->assertOk()->assertJsonPath('data.status', 'delivered')->assertJsonPath('data.settled', false);
+        $body = collect($this->financial)->firstWhere('method', 'PUT')['body'];
+        $this->assertSame(77, $body['payments'][1]['financial_payment_id']);
+        $this->assertSame(1, $body['payments'][1]['account_id']);
+        $this->assertSame((string) $remote, $body['payments'][1]['id']);
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.payments.1.removable', true);
+    }
+
+    /** Baixa de lá estornada antes de voltar: sai da ficha. Financeiro fora do ar: a ficha abre com o que tem. */
+    public function test_a_financial_payment_reversed_there_leaves_the_sale(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 600))->assertCreated();
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => []])->assertOk();
+        $this->remote = [(string) $sale => ['canceled' => false, 'payments' => [['id' => 80, 'amount' => '150.00', 'paid_at' => '2026-11-10', 'account_id' => 1, 'payment_method' => 'Boleto']]]];
+        // Forma que a ótica não tem: pela conta (1 = a de Espécie).
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.paid', '150.00')->assertJsonPath('data.payments.0.method', 'cash');
+
+        $this->fin = 'down';
+        $this->getJson("/api/admin/sales/{$sale}")->assertOk()->assertJsonPath('data.paid', '150.00');
+        // Para mudar a ficha, precisa falar com o Financeiro.
+        $this->postJson("/api/admin/sales/{$sale}/payments", ['method' => 'pix', 'amount' => 50])->assertJsonValidationErrors(['financial']);
+
+        $this->fin = 'ok';
+        $this->remote = [];
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.paid', '0.00')->assertJsonCount(0, 'data.payments');
+    }
+
     /** OS do atendimento sem ficha (as de antes da ficha existir) entra na ficha, mesmo já enviada, com o valor. */
     public function test_an_order_of_the_visit_without_sale_is_attached_to_a_sale(): void
     {
@@ -213,7 +283,7 @@ class SaleTest extends TestCase
         // Rascunho: nada vai ao Financeiro, e os óculos não vão ao laboratório.
         $this->assertSame([], $this->financial);
         $this->postJson("/api/admin/lab-order-visits/{$this->visit->id}/send")->assertOk()->assertJsonPath('data.sent', 0)
-            ->assertJsonPath('data.results.0.error', fn ($error) => str_contains($error, 'Venda ainda não lançada'));
+            ->assertJsonPath('data.results.0.error', fn ($error) => str_contains($error, 'Ficha ainda não lançada'));
 
         // Lançar: precisa das contas do Financeiro para as formas usadas (só o admin configura).
         $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200], ['method' => 'card', 'amount' => 400, 'installments' => 6]]])

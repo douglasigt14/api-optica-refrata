@@ -73,7 +73,7 @@ class ClientController extends Controller
             throw ValidationException::withMessages(['client' => 'Este cliente tem pedidos ao laboratório e não pode ser apagado.']);
         }
         if (Sale::where('client_id', $client->id)->exists()) {
-            throw ValidationException::withMessages(['client' => 'Este cliente tem vendas e não pode ser apagado.']);
+            throw ValidationException::withMessages(['client' => 'Este cliente tem fichas e não pode ser apagado.']);
         }
         $client->delete();
 

@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Pedido da ótica a um laboratório do grupo (vira OS lá; passo 3 do roteiro). O `id` é o nº do pedido que o laboratório
- * guarda (`external_id`: mandar de novo não duplica). `payload` = o pedido como foi mandado (receita, armação, lente,
+ * Pedido da ótica a um laboratório do grupo (vira OS lá; passo 3 do roteiro). `number` = a **OS de Ótica**, sequência
+ * de cada empresa (09/11/2026; vai ao laboratório como `optical_order_number`). O `id` (único na instalação) é o que o
+ * laboratório guarda como `external_id` (mandar de novo não duplica). `payload` = o pedido como foi mandado (receita, armação, lente,
  * tratamentos). Pendente de envio (04/11/2026: salvar não envia): `sent_at` null; o erro do último envio em `send_error`. A situação vem do laboratório.
  * `city_visit_id` = o atendimento escolhido (vai junto; com lote aberto dele lá, a OS entra no lote: `lab_batch`).
  */
@@ -24,9 +25,25 @@ class LabOrder extends Model
     /** Situações em que a ótica ainda cancela (nenhuma lente separada no laboratório). */
     public const CANCELABLE = ['awaiting_measures', 'awaiting_lens', 'open'];
 
+    /**
+     * A OS de Ótica nasce com o próximo número da empresa (o maior dela + 1).
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (LabOrder $order) {
+            if ($order->getAttributes()['number'] ?? null) {
+                return;
+            }
+            // Trava a empresa (dentro da transação de quem cria) para dois pedidos juntos não pegarem o mesmo número.
+            Company::query()->whereKey($order->company_id)->lockForUpdate()->value('id');
+            $order->number = (int) static::withoutGlobalScopes()->where('company_id', $order->company_id)->max('number') + 1;
+        });
+    }
+
     protected function casts(): array
     {
         return [
+            'number' => 'integer',
             'payload' => 'array',
             'sent_at' => 'datetime',
             'status_at' => 'datetime',

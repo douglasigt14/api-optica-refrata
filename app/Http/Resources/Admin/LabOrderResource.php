@@ -20,6 +20,8 @@ class LabOrderResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            // OS de Ótica: o nº do pedido na empresa (09/11/2026).
+            'number' => $this->number,
             'lab' => ['id' => $this->lab->id, 'name' => $this->lab->name],
             'client' => ['id' => $this->client->id, 'name' => $this->client->name, 'phone_number' => $this->client->phone_number],
             'user' => $this->user?->name,

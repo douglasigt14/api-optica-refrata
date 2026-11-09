@@ -75,7 +75,7 @@ class LabOrderController extends Controller
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {
                 $number = ltrim(preg_replace('/\D/', '', $search), '0');
                 $q->where(fn ($q) => $q->whereHas('client', fn ($q) => $q->where('name', 'like', "%{$search}%"))
-                    ->when($number !== '', fn ($q) => $q->orWhere('id', (int) $number)->orWhere('lab_number', 'like', "%{$number}")));
+                    ->when($number !== '', fn ($q) => $q->orWhere('number', (int) $number)->orWhere('lab_number', 'like', "%{$number}")));
             })
             ->latest('id')
             ->paginate(25);
@@ -155,7 +155,7 @@ class LabOrderController extends Controller
         }
         $orders->each(fn (LabOrder $order) => self::assertStandalone($order));
 
-        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order)]);
+        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'number' => $order->number, 'error' => $this->trySend($order)]);
 
         return response()->json([
             'data' => [
@@ -211,7 +211,7 @@ class LabOrderController extends Controller
             throw ValidationException::withMessages(['orders' => 'Este atendimento não tem pedidos pendentes de envio.']);
         }
 
-        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'error' => $this->trySend($order)]);
+        $results = $orders->map(fn (LabOrder $order) => ['id' => $order->id, 'number' => $order->number, 'error' => $this->trySend($order)]);
 
         return response()->json([
             'data' => [

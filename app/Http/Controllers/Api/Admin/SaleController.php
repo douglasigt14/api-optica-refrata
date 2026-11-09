@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SaleRequest;
 use App\Http\Resources\Admin\SaleResource;
+use App\Models\CityVisit;
 use App\Models\LabOrder;
 use App\Models\Sale;
 use App\Models\SalePayment;
@@ -64,7 +65,12 @@ class SaleController extends Controller
      */
     public function store(SaleRequest $request): JsonResponse
     {
-        $sale = Sale::create([...$request->safe()->only(['client_id', 'city_visit_id', 'expected_delivery_date', 'notes']), 'user_id' => $request->user()->id]);
+        $data = $request->safe()->only(['client_id', 'city_visit_id', 'expected_delivery_date', 'notes']);
+        // Ficha do atendimento: nasce com a entrega prevista do atendimento.
+        if ($data['city_visit_id'] ?? null) {
+            $data['expected_delivery_date'] = CityVisit::findOrFail($data['city_visit_id'])->deliveryDate()->toDateString();
+        }
+        $sale = Sale::create([...$data, 'user_id' => $request->user()->id]);
 
         return $this->show($sale)->response()->setStatusCode(201);
     }
@@ -76,7 +82,64 @@ class SaleController extends Controller
     {
         $this->assertOpen($sale, items: false);
 
-        return $this->change($sale, fn () => $sale->update($request->safe()->only(['client_id', 'expected_delivery_date', 'notes'])));
+        // Ficha do atendimento: a entrega prevista é a do atendimento (troca-se lá, para todas).
+        $fields = $sale->city_visit_id ? ['client_id', 'notes'] : ['client_id', 'expected_delivery_date', 'notes'];
+
+        return $this->change($sale, fn () => $sale->update($request->safe()->only($fields)));
+    }
+
+    /**
+     * Troca a entrega prevista do atendimento (09/11/2026) e de todas as fichas dele (menos canceladas e entregues); nas
+     * lançadas, o vencimento do restante no Financeiro acompanha. Ficha que o Financeiro recusar continua com a data
+     * anterior e volta em `failed` com o motivo.
+     */
+    public function visitDelivery(Request $request, CityVisit $cityVisit): JsonResponse
+    {
+        $date = $request->validate(['expected_delivery_date' => ['required', 'date']], ['expected_delivery_date.required' => 'Informe a entrega prevista.'])['expected_delivery_date'];
+        $cityVisit->update(['expected_delivery_date' => $date]);
+
+        $failed = [];
+        $sales = Sale::where('city_visit_id', $cityVisit->id)->whereNull('canceled_at')->whereNull('delivered_at')->get();
+        foreach ($sales as $sale) {
+            try {
+                $this->change($sale, fn () => $sale->update(['expected_delivery_date' => $date]));
+            } catch (ValidationException $error) {
+                $failed[] = ['id' => $sale->id, 'error' => collect($error->errors())->flatten()->first()];
+            }
+        }
+
+        return response()->json(['data' => [
+            'expected_delivery_date' => $cityVisit->deliveryDate()->toDateString(),
+            'updated' => $sales->count() - count($failed),
+            'failed' => $failed,
+        ]]);
+    }
+
+    /**
+     * Inclui na ficha uma OS do mesmo atendimento que está sem ficha (09/11/2026: as lançadas antes da ficha existir),
+     * com o valor do óculos. Vale mesmo já enviada ao laboratório (é a exceção à trava); na ficha lançada, o Financeiro
+     * acompanha. Ficha da loja, cancelada ou entregue não recebe.
+     */
+    public function attachOrder(Request $request, Sale $sale): SaleResource
+    {
+        $data = $request->validate([
+            'lab_order_id' => ['required', 'integer'],
+            'price' => ['required', 'numeric', 'gt:0', 'max:999999.99'],
+        ], [
+            'lab_order_id.required' => 'Escolha a OS.',
+            'price.required' => 'Informe o valor do óculos.',
+            'price.gt' => 'Informe o valor do óculos.',
+        ]);
+        $this->assertOpen($sale, items: false);
+        if (! $sale->city_visit_id) {
+            throw ValidationException::withMessages(['lab_order_id' => 'Só a ficha de um atendimento recebe OS sem ficha.']);
+        }
+        $order = LabOrder::whereKey($data['lab_order_id'])->where('city_visit_id', $sale->city_visit_id)->whereNull('sale_id')->first();
+        if (! $order || $order->status === 'canceled') {
+            throw ValidationException::withMessages(['lab_order_id' => 'Escolha uma OS deste atendimento que esteja sem ficha (e não cancelada).']);
+        }
+
+        return $this->change($sale, fn () => $order->update(['sale_id' => $sale->id, 'price' => $data['price']]));
     }
 
     /**

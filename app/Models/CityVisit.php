@@ -13,8 +13,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
-#[Fillable(['city_id', 'title', 'visit_date', 'end_date', 'status', 'active', 'orders_closed_at'])]
+#[Fillable(['city_id', 'title', 'visit_date', 'end_date', 'expected_delivery_date', 'status', 'active', 'orders_closed_at'])]
 class CityVisit extends Model
 {
     /** @use HasFactory<CityVisitFactory> */
@@ -42,6 +43,7 @@ class CityVisit extends Model
         return [
             'visit_date' => 'date',
             'end_date' => 'date',
+            'expected_delivery_date' => 'date',
             'status' => CityVisitStatus::class,
             'active' => 'boolean',
             'orders_closed_at' => 'datetime',
@@ -59,6 +61,17 @@ class CityVisit extends Model
     {
         $query->where('status', '!=', CityVisitStatus::Cancelled)
             ->whereNull('orders_closed_at');
+    }
+
+    /** Dias depois do último dia do atendimento para a entrega prevista, quando ninguém definiu outra. */
+    public const DELIVERY_DAYS = 5;
+
+    /**
+     * Entrega prevista do atendimento (09/11/2026): a definida, ou o último dia + 5 dias. Vale para todas as fichas dele.
+     */
+    public function deliveryDate(): Carbon
+    {
+        return $this->expected_delivery_date ?? ($this->end_date ?? $this->visit_date)->copy()->addDays(self::DELIVERY_DAYS);
     }
 
     /** Recebe pedidos agora? (a mesma regra do `acceptingOrders`). */

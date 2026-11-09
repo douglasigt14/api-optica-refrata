@@ -259,6 +259,8 @@ class LabOrderController extends Controller
             'city' => $visit->city ? ['id' => $visit->city->id, 'name' => $visit->city->name, 'state' => $visit->city->state] : null,
             'visit_date' => $visit->visit_date->toDateString(),
             'end_date' => $visit->end_date?->toDateString(),
+            // Entrega prevista do atendimento (a definida ou o último dia + 5); vale para todas as fichas dele.
+            'expected_delivery_date' => $visit->deliveryDate()->toDateString(),
             'status' => $visit->status->value,
             'accepts_orders' => $visit->acceptsOrders(),
             'orders_closed_at' => $visit->orders_closed_at?->toIso8601String(),

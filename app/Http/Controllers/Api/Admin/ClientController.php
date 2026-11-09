@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ClientRequest;
 use App\Http\Resources\Admin\ClientResource;
 use App\Models\Client;
+use App\Models\Sale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
 
 /**
- * Clientes da ótica (admin e atendente): lista com busca, cadastrar e editar. Também o "Novo cliente" do pedido ao
+ * Clientes da ótica (admin e atendente): lista com busca, cadastrar e editar; apagar só o admin. Também o "Novo cliente" do pedido ao
  * laboratório.
  */
 class ClientController extends Controller
@@ -59,5 +62,21 @@ class ClientController extends Controller
         $client->update($request->validated());
 
         return new ClientResource($client->load('city:id,name,state'));
+    }
+
+    /**
+     * Apaga o cliente (só o admin, 09/11/2026). Só quem não tem pedido nem venda: esses ficam (são o histórico da ótica).
+     */
+    public function destroy(Client $client): Response
+    {
+        if ($client->labOrders()->exists()) {
+            throw ValidationException::withMessages(['client' => 'Este cliente tem pedidos ao laboratório e não pode ser apagado.']);
+        }
+        if (Sale::where('client_id', $client->id)->exists()) {
+            throw ValidationException::withMessages(['client' => 'Este cliente tem vendas e não pode ser apagado.']);
+        }
+        $client->delete();
+
+        return response()->noContent();
     }
 }

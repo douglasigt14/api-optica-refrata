@@ -71,7 +71,7 @@ class LabOrderRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'sale_id.exists' => 'Venda não encontrada (ou já entregue ou cancelada).',
+            'sale_id.exists' => 'Ficha não encontrada (ou já entregue ou cancelada).',
             'price.required_with' => 'Informe o valor do óculos.',
             'price.gt' => 'Informe o valor do óculos.',
             'lab_connection_id.required' => 'Escolha o laboratório.',

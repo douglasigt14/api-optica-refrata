@@ -113,7 +113,7 @@ class LabOrderController extends Controller
         }
         $fields = $this->fields($request);
         if ($labOrder->sale_id && (int) $fields['sale_id'] !== $labOrder->sale_id) {
-            throw ValidationException::withMessages(['sale_id' => 'O óculos não troca de venda.']);
+            throw ValidationException::withMessages(['sale_id' => 'O óculos não troca de ficha.']);
         }
         $sale = $this->saleFor($fields);
         if ($fields['prescription_path'] === null) {
@@ -286,7 +286,7 @@ class LabOrderController extends Controller
     {
         // Óculos de venda vai ao laboratório só com a venda lançada (cliente que paga e entrada; 07/11/2026).
         if ($order->sale_id && ! Sale::whereKey($order->sale_id)->whereNotNull('launched_at')->exists()) {
-            $message = 'Venda ainda não lançada: lance a venda (com a entrada) antes de enviar.';
+            $message = 'Ficha ainda não lançada: lance a ficha (com a entrada) antes de enviar.';
             $order->update(['send_error' => $message]);
 
             return $message;
@@ -336,7 +336,7 @@ class LabOrderController extends Controller
         $sale = Sale::with(SaleController::RELATIONS)->findOrFail($fields['sale_id']);
         SaleController::assertOpen($sale);
         if ($sale->city_visit_id !== ($fields['city_visit_id'] ? (int) $fields['city_visit_id'] : null)) {
-            throw ValidationException::withMessages(['sale_id' => $sale->city_visit_id ? 'O óculos tem de ser do atendimento da venda.' : 'Venda da loja: o óculos é avulso (sem atendimento).']);
+            throw ValidationException::withMessages(['sale_id' => $sale->city_visit_id ? 'O óculos tem de ser do atendimento da ficha.' : 'Ficha da loja: o óculos é avulso (sem atendimento).']);
         }
 
         return $sale;

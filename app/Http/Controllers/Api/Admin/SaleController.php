@@ -89,6 +89,80 @@ class SaleController extends Controller
     }
 
     /**
+     * Relatório das fichas de um atendimento (09/11/2026; admin e atendente): sempre de um atendimento só, sem misturar.
+     * Lista todas as fichas (rascunho e canceladas também) com o que foi pago e como, e o que fica para receber na entrega.
+     * Os totais não contam as canceladas; "a receber na entrega" é o que falta das lançadas, e o dos rascunhos vem à parte
+     * (ainda não lançados).
+     */
+    public function visitReport(CityVisit $cityVisit): JsonResponse
+    {
+        $cityVisit->load('city');
+        $sales = Sale::query()->where('city_visit_id', $cityVisit->id)->with(['client', 'orders', 'payments'])->orderBy('id')->get();
+        $money = fn (int $cents) => number_format($cents / 100, 2, '.', '');
+        $cents = fn ($amount) => (int) round(((float) $amount) * 100);
+
+        $totals = ['total' => 0, 'paid' => 0, 'remaining' => 0, 'draft' => 0, 'down' => 0, 'delivery' => 0];
+        $methods = array_fill_keys(array_keys(SalePayment::METHODS), 0);
+        $count = ['draft' => 0, 'launched' => 0, 'delivered' => 0, 'canceled' => 0];
+        $rows = [];
+        foreach ($sales as $sale) {
+            $status = $sale->status();
+            $count[$status]++;
+            if ($status !== 'canceled') {
+                $totals['total'] += $sale->totalCents();
+                $totals['paid'] += $sale->paidCents();
+                if ($status === 'launched') {
+                    $totals['remaining'] += $sale->remainingCents();
+                }
+                if ($status === 'draft') {
+                    $totals['draft'] += $sale->totalCents();
+                }
+                foreach ($sale->payments as $payment) {
+                    $methods[$payment->method] = ($methods[$payment->method] ?? 0) + $cents($payment->amount);
+                    $totals[$payment->stage === 'delivery' ? 'delivery' : 'down'] += $cents($payment->amount);
+                }
+            }
+            $rows[] = [
+                'id' => $sale->id,
+                'status' => $status,
+                'client' => $sale->client ? ['id' => $sale->client->id, 'name' => $sale->client->name, 'cpf' => $sale->client->cpf] : null,
+                'glasses' => $sale->activeOrders()->count(),
+                'total' => $money($sale->totalCents()),
+                'paid' => $money($sale->paidCents()),
+                // Na entrega: o que falta das lançadas (entregue = 0; rascunho e cancelada não têm).
+                'remaining' => $money($status === 'launched' ? $sale->remainingCents() : 0),
+                'payments' => $sale->payments->map(fn (SalePayment $payment) => [
+                    'stage' => $payment->stage,
+                    'method' => $payment->method,
+                    'method_label' => SalePayment::METHODS[$payment->method] ?? $payment->method,
+                    'amount' => $payment->amount,
+                    'installments' => $payment->installments,
+                    'paid_on' => $payment->paid_on->toDateString(),
+                ])->values(),
+                'launched_at' => $sale->launched_at?->toIso8601String(),
+                'delivered_at' => $sale->delivered_at?->toIso8601String(),
+            ];
+        }
+
+        return response()->json(['data' => [
+            'visit' => [
+                'id' => $cityVisit->id,
+                'title' => $cityVisit->title,
+                'city' => $cityVisit->city?->name,
+                'visit_date' => $cityVisit->visit_date->toDateString(),
+                'end_date' => $cityVisit->end_date?->toDateString(),
+                'expected_delivery_date' => $cityVisit->deliveryDate()->toDateString(),
+            ],
+            'count' => $count,
+            'totals' => [
+                ...array_map($money, $totals),
+                'methods' => collect($methods)->map(fn (int $value, string $method) => ['method' => $method, 'method_label' => SalePayment::METHODS[$method] ?? $method, 'amount' => $money($value)])->values(),
+            ],
+            'sales' => $rows,
+        ]]);
+    }
+
+    /**
      * Troca a entrega prevista do atendimento (09/11/2026) e de todas as fichas dele (menos canceladas e entregues); nas
      * lançadas, o vencimento do restante no Financeiro acompanha. Ficha que o Financeiro recusar continua com a data
      * anterior e volta em `failed` com o motivo.

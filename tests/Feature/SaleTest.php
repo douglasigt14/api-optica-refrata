@@ -139,6 +139,40 @@ class SaleTest extends TestCase
         $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id, 'city_visit_id' => $this->visit->id])->assertJsonPath('data.expected_delivery_date', '2026-11-28');
     }
 
+    /** Relatório do atendimento: só as fichas dele, pago por forma de pagamento e o que fica para a entrega. */
+    public function test_the_visit_report_lists_its_sales_with_payments_and_what_is_left_for_delivery(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $launched = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($launched, $this->mother, 600))->assertCreated();
+        $this->postJson("/api/admin/sales/{$launched}/launch", ['payments' => [['method' => 'pix', 'amount' => 200], ['method' => 'card', 'amount' => 100, 'installments' => 3]]])->assertOk();
+        $draft = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($draft, $this->child, 300))->assertCreated();
+        // Ficha de outro atendimento não entra.
+        $other = CityVisit::factory()->create(['city_id' => $this->city->id]);
+        $this->postJson('/api/admin/sales', ['client_id' => $this->mother->id, 'city_visit_id' => $other->id])->assertCreated();
+
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/sales-report")
+            ->assertOk()
+            ->assertJsonCount(2, 'data.sales')
+            ->assertJsonPath('data.count.launched', 1)
+            ->assertJsonPath('data.count.draft', 1)
+            ->assertJsonPath('data.sales.0.id', $launched)
+            ->assertJsonPath('data.sales.0.paid', '300.00')
+            ->assertJsonPath('data.sales.0.remaining', '300.00')
+            ->assertJsonPath('data.sales.0.payments.1.method_label', 'Cartão')
+            ->assertJsonPath('data.sales.0.payments.1.installments', 3)
+            ->assertJsonPath('data.sales.1.remaining', '0.00')
+            ->assertJsonPath('data.totals.total', '900.00')
+            ->assertJsonPath('data.totals.paid', '300.00')
+            ->assertJsonPath('data.totals.remaining', '300.00')
+            ->assertJsonPath('data.totals.draft', '300.00')
+            ->assertJsonPath('data.totals.methods.1.method', 'pix')
+            ->assertJsonPath('data.totals.methods.1.amount', '200.00')
+            ->assertJsonPath('data.totals.methods.2.amount', '100.00');
+    }
+
     /** OS do atendimento sem ficha (as de antes da ficha existir) entra na ficha, mesmo já enviada, com o valor. */
     public function test_an_order_of_the_visit_without_sale_is_attached_to_a_sale(): void
     {

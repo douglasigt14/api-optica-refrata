@@ -48,6 +48,11 @@ class SaleResource extends JsonResource
                 'status' => $order->status,
                 'status_label' => $order->sent_at || $order->status === 'canceled' ? $order->status_label : 'Pendente de envio',
                 'lab_number' => $order->lab_number,
+                // Para a lista do atendimento (vendas em acordeão, 09/11/2026).
+                'lab' => $order->lab ? ['id' => $order->lab->id, 'name' => $order->lab->name] : null,
+                'lab_batch' => $order->lab_batch,
+                'awaits_frame' => $order->awaits_frame,
+                'created_at' => $order->created_at?->toIso8601String(),
             ])->values(),
             'payments' => $this->payments->map(fn (SalePayment $payment) => [
                 'id' => $payment->id,

@@ -36,6 +36,8 @@ class SaleController extends Controller
             // Só as da loja (sem atendimento).
             'standalone' => ['nullable', 'boolean'],
             'search' => ['nullable', 'string', 'max:100'],
+            // A tela do atendimento mostra as vendas com os óculos de cada uma, sem paginar (até 100).
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $sales = Sale::query()
             ->with(self::RELATIONS)
@@ -47,7 +49,7 @@ class SaleController extends Controller
                     ->when($digits !== '', fn ($q) => $q->orWhere('id', (int) $digits)));
             })
             ->latest('id')
-            ->paginate(25);
+            ->paginate($filters['per_page'] ?? 25);
 
         return SaleResource::collection($sales);
     }
@@ -230,7 +232,7 @@ class SaleController extends Controller
         return $this->settings();
     }
 
-    public const RELATIONS = ['client.city', 'cityVisit.city', 'orders.client', 'payments', 'user'];
+    public const RELATIONS = ['client.city', 'cityVisit.city', 'orders.client', 'orders.lab', 'payments', 'user'];
 
     /**
      * Venda que ainda aceita mudanças. `items` = óculos e valores (travam quando algum óculos foi ao laboratório).

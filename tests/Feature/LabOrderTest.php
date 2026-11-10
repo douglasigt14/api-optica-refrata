@@ -118,6 +118,33 @@ class LabOrderTest extends TestCase
         $this->getJson("/api/admin/clients/{$theirs->id}")->assertNotFound();
     }
 
+    /** Cadastro do cliente (10/11/2026): comorbidades, como conheceu a ótica e a idade (pela data ou informada). */
+    public function test_client_has_comorbidities_referral_and_age(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $base = ['name' => 'Pedro (filho)', 'city_id' => $this->city->id];
+
+        $id = $this->postJson('/api/admin/clients', [...$base, 'age' => 8, 'referral_source' => 'instagram', 'comorbidities' => ['diabetes' => ['family', 'family'], 'glaucoma' => ['self', 'family'], 'blindness' => []]])
+            ->assertCreated()
+            ->assertJsonPath('data.age', 8)
+            ->assertJsonPath('data.referral_source', 'instagram')
+            ->assertJsonPath('data.comorbidities', ['diabetes' => ['family'], 'glaucoma' => ['self', 'family']])
+            ->json('data.id');
+        // A idade informada cresce com o tempo.
+        $this->travel(2)->years();
+        $this->getJson("/api/admin/clients/{$id}")->assertJsonPath('data.age', 10);
+        $this->travelBack();
+
+        // Com data de nascimento, a idade sai dela e a informada some.
+        $this->patchJson("/api/admin/clients/{$id}", [...$base, 'birth_date' => today()->subYears(9)->subDay()->toDateString(), 'age' => 30])->assertOk()->assertJsonPath('data.age', 9);
+        $this->assertNull(Client::find($id)->getRawOriginal('age'));
+
+        $this->postJson('/api/admin/clients', [...$base, 'referral_source' => 'tv', 'comorbidities' => ['asma' => ['self']], 'age' => 200])
+            ->assertJsonValidationErrors(['referral_source', 'comorbidities', 'age']);
+        $this->postJson('/api/admin/clients', [...$base, 'comorbidities' => ['diabetes' => ['amigo']]])->assertJsonValidationErrors(['comorbidities.diabetes.0']);
+        $this->postJson('/api/admin/clients', [...$base, 'comorbidities' => ['diabetes' => []]])->assertCreated()->assertJsonPath('data.comorbidities', []);
+    }
+
     /** Apagar cliente (09/11/2026): só o admin, e só quem não tem pedido nem venda. */
     public function test_only_the_admin_deletes_a_client_without_orders(): void
     {
@@ -263,8 +290,9 @@ class LabOrderTest extends TestCase
         // Pedido de atendimento não vai sozinho (nem marcado): vai pelo atendimento, junto com os outros.
         $this->postJson("/api/admin/lab-orders/{$external[0]}/send")->assertJsonValidationErrors(['status' => 'envie pelo atendimento']);
         $this->postJson('/api/admin/lab-orders/send', ['ids' => [$external[0], $internal[0]]])->assertJsonValidationErrors(['status']);
-        $this->getJson("/api/admin/lab-orders?city_visit_id={$visit->id}")->assertJsonCount(2, 'data');
-        $this->getJson('/api/admin/lab-orders?standalone=1')->assertJsonCount(2, 'data');
+        // No atendimento, na ordem em que foram feitos; nas outras listas, o mais novo primeiro.
+        $this->getJson("/api/admin/lab-orders?city_visit_id={$visit->id}")->assertJsonCount(2, 'data')->assertJsonPath('data.0.id', $external[0])->assertJsonPath('data.1.id', $external[1]);
+        $this->getJson('/api/admin/lab-orders?standalone=1')->assertJsonCount(2, 'data')->assertJsonPath('data.0.id', $internal[1]);
         // Sem venda (no atendimento, o grupo "Sem venda").
         $this->getJson("/api/admin/lab-orders?city_visit_id={$visit->id}&without_sale=1")->assertJsonCount(2, 'data');
 

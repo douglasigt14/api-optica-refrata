@@ -23,6 +23,10 @@ class ClientResource extends JsonResource
             'phone_number' => $this->phone_number,
             'address' => $this->address,
             'birth_date' => $this->birth_date?->toDateString(),
+            // Idade hoje (pela data de nascimento ou pela informada).
+            'age' => $this->currentAge(),
+            'comorbidities' => (object) ($this->comorbidities ?? []),
+            'referral_source' => $this->referral_source,
             'city' => $this->city?->only(['id', 'name', 'state']),
             'lead_id' => $this->lead_id,
             'lab_orders_count' => $this->whenCounted('labOrders'),

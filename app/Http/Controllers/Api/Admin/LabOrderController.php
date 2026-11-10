@@ -80,7 +80,8 @@ class LabOrderController extends Controller
                 $q->where(fn ($q) => $q->whereHas('client', fn ($q) => $q->where('name', 'like', "%{$search}%"))
                     ->when($number !== '', fn ($q) => $q->orWhere('number', (int) $number)->orWhere('lab_number', 'like', "%{$number}")));
             })
-            ->latest('id')
+            // Dentro do atendimento, na ordem em que foram feitos (1, 2, 3…); nas outras listas, o mais novo primeiro.
+            ->when($filters['city_visit_id'] ?? null, fn ($q) => $q->oldest('id'), fn ($q) => $q->latest('id'))
             ->paginate(25);
 
         return LabOrderResource::collection($orders);

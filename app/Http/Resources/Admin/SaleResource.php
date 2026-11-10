@@ -73,6 +73,7 @@ class SaleResource extends JsonResource
                 'paid_on' => $payment->paid_on->toDateString(),
                 // Baixa feita no Financeiro (09/11/2026); enquanto não volta no estado da ficha, só se estorna lá.
                 'from_financial' => $payment->from_financial,
+                'kind' => $payment->kind($this->resource),
                 'removable' => $payment->financial_payment_id === null,
             ])->values(),
             'total' => $money($this->totalCents()),

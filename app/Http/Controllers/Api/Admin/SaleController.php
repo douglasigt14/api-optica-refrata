@@ -149,6 +149,7 @@ class SaleController extends Controller
                     'installments' => $payment->installments,
                     'paid_on' => $payment->paid_on->toDateString(),
                     'from_financial' => $payment->from_financial,
+                    'kind' => $payment->kind($sale),
                 ])->values(),
                 'settled' => $status === 'launched' && $sale->totalCents() > 0 && $sale->remainingCents() === 0,
                 'launched_at' => $sale->launched_at?->toIso8601String(),

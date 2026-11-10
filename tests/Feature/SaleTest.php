@@ -202,7 +202,9 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.paid', '600.00')
             ->assertJsonPath('data.remaining', '0.00')
             ->assertJsonPath('data.settled', true)
+            ->assertJsonPath('data.payments.0.kind', 'down')
             ->assertJsonPath('data.payments.1.method', 'pix')
+            ->assertJsonPath('data.payments.1.kind', 'financial')
             ->assertJsonPath('data.payments.1.from_financial', true)
             ->assertJsonPath('data.payments.1.removable', false);
         // Abrir de novo não duplica; não se apaga por aqui.
@@ -219,6 +221,20 @@ class SaleTest extends TestCase
         $this->assertSame(1, $body['payments'][1]['account_id']);
         $this->assertSame((string) $remote, $body['payments'][1]['id']);
         $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.payments.1.removable', true);
+    }
+
+    /** O pago ao lançar é a "Entrada"; o pago depois, "Pagamento avulso" (09/11/2026). */
+    public function test_the_down_payment_is_told_apart_from_a_later_payment(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 600))->assertCreated();
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200]]])->assertOk()->assertJsonPath('data.payments.0.kind', 'down');
+        $this->travel(1)->minutes();
+        $this->postJson("/api/admin/sales/{$sale}/payments", ['method' => 'cash', 'amount' => 50])
+            ->assertOk()->assertJsonPath('data.payments.0.kind', 'down')->assertJsonPath('data.payments.1.kind', 'extra');
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/sales-report")->assertJsonPath('data.sales.0.payments.1.kind', 'extra');
     }
 
     /** Baixa de lá estornada antes de voltar: sai da ficha. Financeiro fora do ar: a ficha abre com o que tem. */

@@ -27,6 +27,21 @@ class SalePayment extends Model
         return ['amount' => 'decimal:2', 'paid_on' => 'date', 'installments' => 'integer', 'from_financial' => 'boolean', 'financial_payment_id' => 'integer', 'financial_account_id' => 'integer'];
     }
 
+    /**
+     * O tipo na lista da ficha (09/11/2026): `financial` (baixa feita no Financeiro), `delivery` (na entrega), `down`
+     * (entrada, paga ao lançar) ou `extra` (avulso, depois de lançar). Entrada e avulso têm o mesmo `stage`; o que separa
+     * é ter sido gravado junto com o lançamento.
+     */
+    public function kind(Sale $sale): string
+    {
+        return match (true) {
+            $this->from_financial => 'financial',
+            $this->stage === 'delivery' => 'delivery',
+            $sale->launched_at !== null && $this->created_at !== null && $this->created_at->lte($sale->launched_at->copy()->addSeconds(5)) => 'down',
+            default => 'extra',
+        };
+    }
+
     /** @return BelongsTo<Sale, $this> */
     public function sale(): BelongsTo
     {

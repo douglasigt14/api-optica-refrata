@@ -24,6 +24,7 @@ class SaleResource extends JsonResource
             'city_visit' => $this->cityVisit ? [
                 'id' => $this->cityVisit->id,
                 'title' => $this->cityVisit->title,
+                'city_id' => $this->cityVisit->city_id,
                 'city' => $this->cityVisit->city?->name,
                 'visit_date' => $this->cityVisit->visit_date->toDateString(),
                 'end_date' => $this->cityVisit->end_date?->toDateString(),

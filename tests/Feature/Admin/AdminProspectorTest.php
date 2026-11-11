@@ -51,7 +51,9 @@ class AdminProspectorTest extends TestCase
         $this->getJson('/api/admin/prospectors/options')
             ->assertOk()
             ->assertJsonCount(3, 'data')
-            ->assertJsonPath('data.0.name', 'Ana Lima');
+            ->assertJsonPath('data.0.name', 'Ana Lima')
+            ->assertJsonPath('data.0.blocked', true)
+            ->assertJsonPath('data.2.blocked', false);
     }
 
     public function test_shows_a_prospector_with_leads_by_stage(): void

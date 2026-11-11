@@ -6,11 +6,14 @@ use App\Enums\LeadStage;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ScheduleLeadRequest;
 use App\Http\Requests\Admin\StoreLeadContactRequest;
+use App\Http\Requests\Admin\StoreLeadRequest;
 use App\Http\Requests\Admin\UpdateLeadStatusRequest;
 use App\Http\Resources\Admin\LeadContactResource;
 use App\Http\Resources\Admin\LeadResource;
+use App\Models\CityVisit;
 use App\Models\Lead;
 use App\Models\LeadStatus;
+use App\Models\Prospector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -57,6 +60,26 @@ class LeadController extends Controller
             ->paginate($filters['per_page'] ?? 25);
 
         return LeadResource::collection($leads);
+    }
+
+    /**
+     * Nova indicação lançada pela equipe em nome de um parceiro (11/11/2026). Segue a regra do app dos parceiros:
+     * de parceiro confiável, já nasce Agendada no 1º dia livre do atendimento.
+     */
+    public function store(StoreLeadRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $prospector = Prospector::findOrFail($data['prospector_id']);
+        unset($data['prospector_id']);
+
+        if ($prospector->isTrusted()) {
+            $data['stage'] = LeadStage::Scheduled;
+            $data['appointment_date'] = CityVisit::findOrFail($data['city_visit_id'])->firstAvailableDay();
+        }
+
+        $lead = $prospector->leads()->create($data);
+
+        return (new LeadResource($lead->load(['city', 'visit', 'prospector', 'status'])->loadCount('contacts')))->response()->setStatusCode(201);
     }
 
     public function show(Lead $lead): LeadResource

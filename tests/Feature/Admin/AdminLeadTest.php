@@ -64,6 +64,41 @@ class AdminLeadTest extends TestCase
         $this->getJson('/api/admin/leads?stage=scheduled')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_team_creates_a_lead_for_a_partner(): void
+    {
+        $visit = CityVisit::factory()->create(['visit_date' => today()->addDays(5)]);
+        $prospector = Prospector::factory()->create(['name' => 'Carlos Parceiro']);
+        $trusted = Prospector::factory()->create(['trusted_at' => now()]);
+        $blocked = Prospector::factory()->create(['blocked_at' => now()]);
+        $lead = fn (array $data = []) => [
+            'prospector_id' => $prospector->id,
+            'name' => 'João Pereira',
+            'phone_number' => '(88) 98888-7777',
+            'city_id' => $visit->city_id,
+            'city_visit_id' => $visit->id,
+            ...$data,
+        ];
+
+        $this->postJson('/api/admin/leads', $lead())
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'João Pereira')
+            ->assertJsonPath('data.phone_number', '88988887777')
+            ->assertJsonPath('data.prospector.name', 'Carlos Parceiro')
+            ->assertJsonPath('data.visit.id', $visit->id)
+            ->assertJsonPath('data.status.stage', 'new');
+        $this->assertDatabaseHas('leads', ['prospector_id' => $prospector->id, 'name' => 'João Pereira', 'stage' => 'new']);
+
+        // Parceiro confiável: já nasce Agendada no 1º dia do atendimento, como no app.
+        $this->postJson('/api/admin/leads', $lead(['prospector_id' => $trusted->id]))
+            ->assertCreated()
+            ->assertJsonPath('data.status.stage', 'scheduled')
+            ->assertJsonPath('data.appointment_date', $visit->visit_date->toDateString());
+
+        $this->postJson('/api/admin/leads', $lead(['prospector_id' => $blocked->id]))->assertJsonValidationErrors(['prospector_id']);
+        $this->postJson('/api/admin/leads', $lead(['prospector_id' => null]))->assertJsonValidationErrors(['prospector_id' => 'Escolha o parceiro.']);
+        $this->postJson('/api/admin/leads', $lead(['city_visit_id' => CityVisit::factory()->create()->id]))->assertJsonValidationErrors(['city_visit_id']);
+    }
+
     public function test_schedules_exam_within_the_visit_period(): void
     {
         $lead = $this->leadInVisit();

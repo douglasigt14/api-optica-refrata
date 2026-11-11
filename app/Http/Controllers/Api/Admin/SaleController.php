@@ -44,10 +44,15 @@ class SaleController extends Controller
             ->with(self::RELATIONS)
             ->when($filters['city_visit_id'] ?? null, fn ($q, int $id) => $q->where('city_visit_id', $id))
             ->when($request->boolean('standalone'), fn ($q) => $q->whereNull('city_visit_id'))
+            // Busca (11/11/2026: também pelos óculos): cliente que paga (nome ou CPF), nº da ficha, paciente dos óculos,
+            // OS de Ótica ou OS Lab.
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {
                 $digits = preg_replace('/\D/', '', $search);
+                $number = ltrim($digits, '0');
                 $q->where(fn ($q) => $q->whereHas('client', fn ($q) => $q->where('name', 'like', "%{$search}%")->when($digits !== '', fn ($q) => $q->orWhere('cpf', 'like', "{$digits}%")))
-                    ->when($digits !== '', fn ($q) => $q->orWhere('id', (int) $digits)));
+                    ->when($digits !== '', fn ($q) => $q->orWhere('id', (int) $digits))
+                    ->orWhereHas('orders', fn ($q) => $q->whereHas('client', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+                        ->when($number !== '', fn ($q) => $q->orWhere('number', (int) $number)->orWhere('lab_number', 'like', "%{$number}"))));
             })
             ->latest('id')
             ->paginate($filters['per_page'] ?? 25);

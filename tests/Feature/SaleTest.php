@@ -354,8 +354,12 @@ class SaleTest extends TestCase
 
         // Venda da loja (sem atendimento): o óculos é avulso.
         $sale = $this->newSale(['city_visit_id' => null]);
-        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->child, 450, ['service_place' => 'internal', 'city_visit_id' => null]))->assertCreated();
+        $number = $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->child, 450, ['service_place' => 'internal', 'city_visit_id' => null]))->assertCreated()->json('data.number');
         $this->getJson('/api/admin/sales?standalone=1')->assertJsonCount(1, 'data');
+        // Busca também pelos óculos: o paciente e a OS de Ótica.
+        $this->getJson('/api/admin/sales?search=talisson')->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $sale);
+        $this->getJson("/api/admin/sales?search={$number}")->assertJsonPath('data.0.id', $sale);
+        $this->getJson('/api/admin/sales?search=ninguem')->assertJsonCount(0, 'data');
 
         // Cliente que paga sem CPF não lança.
         $this->patchJson("/api/admin/sales/{$sale}", ['client_id' => $this->child->id, 'expected_delivery_date' => today()->addDays(10)->toDateString()])->assertOk();

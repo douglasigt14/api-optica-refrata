@@ -333,15 +333,15 @@ class LabOrderTest extends TestCase
         $this->postJson('/api/admin/lab-orders', $this->order($client, ['service_place' => 'external', 'city_visit_id' => $old->id]))->assertCreated();
 
         // Desde que é cadastrado (não espera o 1º dia), não cancelado e sem "Encerrar pedidos" (concluído continua: os
-        // pedidos chegam depois). Do mais novo ao mais antigo.
+        // pedidos chegam depois). Por data, do mais antigo (ainda aberto) ao mais distante.
         $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertOk()
             ->assertJsonCount(3, 'data')
-            ->assertJsonPath('data.0.title', 'Futuro')
+            ->assertJsonPath('data.0.title', 'Outubro')
             ->assertJsonPath('data.1.title', 'Novembro')
-            ->assertJsonPath('data.2.title', 'Outubro')
-            ->assertJsonPath('data.2.pending_count', 1)
-            ->assertJsonPath('data.2.sent_count', 0)
-            ->assertJsonPath('data.2.city.name', 'Iguatu');
+            ->assertJsonPath('data.2.title', 'Futuro')
+            ->assertJsonPath('data.0.pending_count', 1)
+            ->assertJsonPath('data.0.sent_count', 0)
+            ->assertJsonPath('data.0.city.name', 'Iguatu');
         $this->getJson('/api/admin/lab-order-visits')->assertJsonCount(4, 'data');
 
         // Com pedido pendente, não encerra.

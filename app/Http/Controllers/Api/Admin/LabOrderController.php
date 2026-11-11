@@ -183,7 +183,7 @@ class LabOrderController extends Controller
                 'labOrders as pending_count' => fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
                 'labOrders as sent_count' => fn ($q) => $q->whereNotNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
             ])
-            ->orderByDesc('visit_date')->orderByDesc('id')
+            ->orderBy('visit_date')->orderBy('id')
             ->get();
 
         return response()->json(['data' => $visits->map(fn (CityVisit $visit) => self::visitData($visit))->values()]);

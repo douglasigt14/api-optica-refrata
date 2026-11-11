@@ -348,6 +348,11 @@ class LabOrderTest extends TestCase
         $this->postJson("/api/admin/lab-order-visits/{$old->id}/close")->assertJsonValidationErrors(['orders']);
         $this->postJson("/api/admin/lab-order-visits/{$now->id}/close")->assertOk()->assertJsonPath('data.accepts_orders', false);
         $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}")->assertJsonCount(2, 'data');
+        // closed=1: só os encerrados (o cancelado não entra).
+        $this->getJson("/api/admin/lab-order-visits?city_id={$this->city->id}&closed=1")->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', 'Novembro')
+            ->assertJsonPath('data.0.accepts_orders', false);
         // Encerrado não recebe pedido novo; reabrir volta.
         $this->postJson('/api/admin/lab-orders', $this->order($client, ['service_place' => 'external', 'city_visit_id' => $now->id]))->assertJsonValidationErrors(['city_visit_id']);
         $this->deleteJson("/api/admin/lab-order-visits/{$now->id}/close")->assertOk()->assertJsonPath('data.accepts_orders', true);

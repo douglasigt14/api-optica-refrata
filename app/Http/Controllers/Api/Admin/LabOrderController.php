@@ -175,15 +175,18 @@ class LabOrderController extends Controller
      */
     public function visits(Request $request): JsonResponse
     {
-        $cityId = $request->validate(['city_id' => ['nullable', 'integer']])['city_id'] ?? null;
-        $visits = CityVisit::acceptingOrders()
+        $filters = $request->validate(['city_id' => ['nullable', 'integer'], 'closed' => ['nullable', 'boolean']]);
+        $cityId = $filters['city_id'] ?? null;
+        // closed=1 (11/11/2026): os de "Encerrar pedidos" (não cancelados), do encerrado mais recente ao mais antigo.
+        $closed = (bool) ($filters['closed'] ?? false);
+        $visits = ($closed ? CityVisit::ordersClosed() : CityVisit::acceptingOrders())
             ->with('city')
             ->when($cityId, fn ($q, int $id) => $q->where('city_id', $id))
             ->withCount([
                 'labOrders as pending_count' => fn ($q) => $q->whereNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
                 'labOrders as sent_count' => fn ($q) => $q->whereNotNull('sent_at')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'canceled')),
             ])
-            ->orderBy('visit_date')->orderBy('id')
+            ->when($closed, fn ($q) => $q->orderByDesc('orders_closed_at')->orderByDesc('id'), fn ($q) => $q->orderBy('visit_date')->orderBy('id'))
             ->get();
 
         return response()->json(['data' => $visits->map(fn (CityVisit $visit) => self::visitData($visit))->values()]);

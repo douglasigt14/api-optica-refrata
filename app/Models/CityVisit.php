@@ -63,6 +63,14 @@ class CityVisit extends Model
             ->whereNull('orders_closed_at');
     }
 
+    /** Atendimentos em que alguém clicou em "Encerrar pedidos" (não cancelados). */
+    #[Scope]
+    protected function ordersClosed(Builder $query): void
+    {
+        $query->where('status', '!=', CityVisitStatus::Cancelled)
+            ->whereNotNull('orders_closed_at');
+    }
+
     /** Dias depois do último dia do atendimento para a entrega prevista, quando ninguém definiu outra. */
     public const DELIVERY_DAYS = 5;
 

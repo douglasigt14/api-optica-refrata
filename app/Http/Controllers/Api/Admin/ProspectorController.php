@@ -69,6 +69,7 @@ class ProspectorController extends Controller
                 'phone_number' => $prospector->phone_number,
                 'city' => $prospector->city->only(['id', 'name', 'state']),
                 'leads_count' => $prospector->leads_count,
+                'blocked' => $prospector->isBlocked(),
             ]);
 
         return response()->json(['data' => $prospectors]);

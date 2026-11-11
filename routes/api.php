@@ -85,6 +85,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
             Route::get('/lead-statuses', [Admin\LeadStatusController::class, 'index'])->name('lead-statuses.index');
             Route::get('/leads', [Admin\LeadController::class, 'index'])->name('leads.index');
+            Route::post('/leads', [Admin\LeadController::class, 'store'])->name('leads.store');
             Route::get('/leads/{lead}', [Admin\LeadController::class, 'show'])->name('leads.show');
             Route::patch('/leads/{lead}/schedule', [Admin\LeadController::class, 'schedule'])->name('leads.schedule');
             Route::patch('/leads/{lead}/status', [Admin\LeadController::class, 'updateStatus'])->name('leads.status');

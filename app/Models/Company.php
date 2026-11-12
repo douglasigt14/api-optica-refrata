@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 /**
@@ -16,9 +17,10 @@ use Illuminate\Support\Str;
  * entra (equipe nem parceiros). `invite_code`: o código que o parceiro usa no cadastro (link de convite).
  * `financial_url`: painel do financeiro, quando a ótica o usa (item Financeiro no menu do admin). `financial_api_url` e
  * `financial_token`: a ligação com a API do financeiro (vendas, 07/11/2026), gravada pelo Console. `sale_accounts`: a conta
- * do financeiro de cada forma de pagamento das vendas (`cash`, `pix`, `card`), escolhida pelo admin.
+ * do financeiro de cada forma de pagamento das vendas (`cash`, `pix`, `card`), escolhida pelo admin. `print_logo_path`: a
+ * logo das impressões (Configurações, 12/11/2026).
  */
-#[Fillable(['group_id', 'console_id', 'name', 'trade_name', 'document', 'invite_code', 'active', 'financial_url', 'financial_api_url', 'financial_token', 'sale_accounts'])]
+#[Fillable(['group_id', 'console_id', 'name', 'trade_name', 'document', 'invite_code', 'active', 'financial_url', 'financial_api_url', 'financial_token', 'sale_accounts', 'print_logo_path'])]
 class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */
@@ -61,6 +63,12 @@ class Company extends Model
     public function available(): bool
     {
         return $this->active && ! $this->group?->blocked();
+    }
+
+    /** Link assinado da logo das impressões (a tag de imagem não manda o token); null sem logo. */
+    public function printLogoUrl(): ?string
+    {
+        return $this->print_logo_path ? URL::signedRoute('companies.print-logo', ['company' => $this->id, 'v' => substr(md5($this->print_logo_path), 0, 8)]) : null;
     }
 
     /** Nome que aparece no painel e no app (fantasia, senão a razão social). */

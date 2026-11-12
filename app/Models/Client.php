@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Cliente da ótica: veio de uma indicação (`lead_id`) ou foi cadastrado na tela Clientes; é o paciente dos pedidos ao
  * laboratório.
  */
-#[Fillable(['lead_id', 'city_id', 'name', 'cpf', 'birth_date', 'age', 'wears_glasses', 'phone_number', 'address', 'comorbidities', 'referral_source'])]
+#[Fillable(['lead_id', 'city_id', 'name', 'cpf', 'birth_date', 'age', 'wears_glasses', 'phone_number', 'address', 'comorbidities', 'referral_source', 'last_purchase_date', 'last_purchase_amount', 'referred_by', 'notes'])]
 class Client extends Model
 {
     use BelongsToCompany;
@@ -69,6 +69,8 @@ class Client extends Model
             'wears_glasses' => 'boolean',
             'age_recorded_on' => 'date',
             'comorbidities' => 'array',
+            'last_purchase_date' => 'date',
+            'last_purchase_amount' => 'decimal:2',
         ];
     }
 

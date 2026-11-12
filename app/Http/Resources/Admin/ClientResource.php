@@ -28,6 +28,11 @@ class ClientResource extends JsonResource
             'wears_glasses' => (bool) $this->wears_glasses,
             'comorbidities' => (object) ($this->comorbidities ?? []),
             'referral_source' => $this->referral_source,
+            // Última compra, quem indicou e observações (12/11/2026; vieram da planilha da Perfeita Visão).
+            'last_purchase_date' => $this->last_purchase_date?->toDateString(),
+            'last_purchase_amount' => $this->last_purchase_amount === null ? null : (float) $this->last_purchase_amount,
+            'referred_by' => $this->referred_by,
+            'notes' => $this->notes,
             'city' => $this->city?->only(['id', 'name', 'state']),
             'lead_id' => $this->lead_id,
             'lab_orders_count' => $this->whenCounted('labOrders'),

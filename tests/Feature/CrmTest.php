@@ -95,7 +95,7 @@ class CrmTest extends TestCase
             ->assertJsonPath('data.ranking.0.user.name', 'Romana')->assertJsonPath('data.ranking.0.contacts', 2)->assertJsonPath('data.ranking.0.bookings', 1);
 
         $bia = $this->client('Bia');
-        $this->postJson($this->url("/clients/{$bia->id}/contacts"), [...$base, 'result' => 'wrong_number'])->assertJsonPath('data.stage', 'not_interested');
+        $this->postJson($this->url("/clients/{$bia->id}/contacts"), [...$base, 'result' => 'wrong_number'])->assertJsonPath('data.stage', 'no_success');
     }
 
     public function test_sale_in_the_visit_moves_to_went_and_bought(): void
@@ -126,5 +126,14 @@ class CrmTest extends TestCase
         $this->postJson($this->url('/no-shows'))->assertOk()->assertJsonPath('data.count', 2);
         $this->getJson($this->url())->assertJsonPath('data.results.no_show', 2)->assertJsonPath('data.results.attendance_rate', 0);
         $this->getJson($this->url("/clients/{$ana->id}"))->assertJsonPath('data.stage', 'no_show')->assertJsonPath('data.timeline.0.kind', 'auto');
+    }
+
+    /** No CRM o número não sai nem para o admin. */
+    public function test_crm_never_returns_the_number(): void
+    {
+        $ana = $this->client('Ana');
+        Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
+        $this->assertStringNotContainsString('94669561', $this->getJson($this->url('/clients'))->getContent());
+        $this->getJson($this->url("/clients/{$ana->id}"))->assertJsonPath('data.phone_number', null)->assertJsonPath('data.phone_masked', '(88) 9••••-••61');
     }
 }

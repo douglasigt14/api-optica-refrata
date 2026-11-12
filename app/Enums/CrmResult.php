@@ -31,8 +31,10 @@ enum CrmResult: string
     {
         return match ($this) {
             self::Booked => CrmStage::Booked,
-            self::Talked, self::NoAnswer, self::CallBack => CrmStage::Talking,
-            self::NotInterested, self::WrongNumber => CrmStage::NotInterested,
+            self::Talked, self::CallBack => CrmStage::Talking,
+            // Tentou e não falou (12/11/2026, decisão do Douglas): coluna própria no quadro.
+            self::NoAnswer, self::WrongNumber => CrmStage::NoSuccess,
+            self::NotInterested => CrmStage::NotInterested,
         };
     }
 }

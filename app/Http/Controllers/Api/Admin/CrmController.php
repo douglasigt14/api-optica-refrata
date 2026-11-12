@@ -342,7 +342,10 @@ class CrmController extends Controller
         return [
             'id' => $client->id,
             'name' => $client->name,
-            ...PhonePrivacy::fields($client->phone_number),
+            // No CRM o número nunca sai, nem para o admin (Douglas, 12/11/2026): só o mascarado. Ligar/conversar é pelo id.
+            'phone_number' => null,
+            'phone_masked' => PhonePrivacy::mask($client->phone_number),
+            'has_phone' => (string) $client->phone_number !== '',
             'last_purchase_date' => $last?->toDateString(),
             'last_purchase_amount' => $client->last_purchase_amount === null ? null : (float) $client->last_purchase_amount,
             'period' => $period,

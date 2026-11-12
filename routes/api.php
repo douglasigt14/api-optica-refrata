@@ -150,6 +150,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('role:admin')->group(function () {
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
             // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
+            // Zerar a fila do atendimento (12/11/2026): apaga as senhas e a contagem volta para 001.
+            Route::delete('/lab-order-visits/{cityVisit}/tickets', [Admin\QueueTicketController::class, 'reset'])->name('lab-order-visits.tickets.reset');
             Route::post('/settings/print-logo', [Admin\SettingsController::class, 'storePrintLogo'])->name('settings.print-logo.store');
             Route::delete('/settings/print-logo', [Admin\SettingsController::class, 'destroyPrintLogo'])->name('settings.print-logo.destroy');
             Route::get('/sale-settings', [Admin\SaleController::class, 'settings'])->name('sale-settings.show');

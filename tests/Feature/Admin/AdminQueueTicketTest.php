@@ -59,4 +59,52 @@ class AdminQueueTicketTest extends TestCase
         $other = CityVisit::factory()->create();
         $this->postJson("/api/admin/lab-order-visits/{$other->id}/tickets/{$n1}/call")->assertNotFound();
     }
+
+    public function test_call_next_of_one_queue(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $visit = CityVisit::factory()->create();
+        $url = "/api/admin/lab-order-visits/{$visit->id}/tickets";
+
+        $this->postJson($url, ['type' => 'normal']);
+        $this->postJson($url, ['type' => 'priority']);
+
+        $this->postJson("$url/call-next", ['type' => 'normal'])->assertOk()->assertJsonPath('data.code', 'N001');
+        $this->postJson("$url/call-next", ['type' => 'normal'])->assertJsonValidationErrors(['ticket']);
+        $this->postJson("$url/call-next", ['type' => 'priority'])->assertOk()->assertJsonPath('data.code', 'P001');
+        $this->postJson("$url/call-next", ['type' => 'vip'])->assertJsonValidationErrors(['type']);
+    }
+
+    public function test_saves_the_printed_number_only_if_it_is_still_free(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $visit = CityVisit::factory()->create();
+        $url = "/api/admin/lab-order-visits/{$visit->id}/tickets";
+
+        $this->getJson($url)->assertJsonPath('data.next_number.normal', 1)->assertJsonPath('data.next_number.priority', 1);
+        $this->postJson($url, ['type' => 'normal', 'number' => 1])->assertCreated()->assertJsonPath('data.code', 'N001');
+        // Outro computador imprimiu a N001 também: recusa e diz a próxima livre.
+        $this->postJson($url, ['type' => 'normal', 'number' => 1])->assertJsonValidationErrors(['number'])
+            ->assertJsonPath('errors.number.0', 'A senha N001 já foi emitida em outro computador. Imprima de novo: a próxima é N002.');
+        $this->getJson($url)->assertJsonPath('data.next_number.normal', 2)->assertJsonPath('data.issued.normal', 1);
+    }
+
+    public function test_only_admin_resets_the_queue_back_to_001(): void
+    {
+        $visit = CityVisit::factory()->create();
+        $other = CityVisit::factory()->create();
+        $url = "/api/admin/lab-order-visits/{$visit->id}/tickets";
+
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->postJson($url, ['type' => 'normal']);
+        $this->postJson($url, ['type' => 'priority']);
+        $this->postJson("/api/admin/lab-order-visits/{$other->id}/tickets", ['type' => 'normal']);
+        $this->deleteJson($url)->assertForbidden();
+
+        Passport::actingAs(User::factory()->team()->create());
+        $this->deleteJson($url)->assertOk()->assertJsonPath('data.issued.normal', 0)->assertJsonPath('data.next_number.priority', 1);
+        $this->postJson($url, ['type' => 'normal'])->assertJsonPath('data.code', 'N001');
+        // O outro atendimento não muda.
+        $this->getJson("/api/admin/lab-order-visits/{$other->id}/tickets")->assertJsonPath('data.issued.normal', 1);
+    }
 }

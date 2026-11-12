@@ -27,22 +27,30 @@ class QueueTicketController extends Controller
     }
 
     /**
-     * Emite a próxima senha do tipo. Duas emissões ao mesmo tempo: o índice único segura e a segunda tenta de novo.
+     * Grava a próxima senha do tipo. O painel imprime antes e só grava depois que a pessoa confirma que saiu, mandando o
+     * `number` impresso: se outro computador já gravou esse número, recusa (a senha precisa ser impressa de novo). Sem
+     * `number`, grava a próxima. Duas gravações ao mesmo tempo: o índice único segura e a segunda tenta de novo.
      */
     public function store(Request $request, CityVisit $cityVisit): JsonResponse
     {
         $data = $request->validate(
-            ['type' => ['required', Rule::in(array_keys(QueueTicket::TYPES))]],
+            ['type' => ['required', Rule::in(array_keys(QueueTicket::TYPES))], 'number' => ['nullable', 'integer', 'min:1']],
             ['type.required' => 'Escolha senha normal ou prioridade.', 'type.in' => 'Escolha senha normal ou prioridade.'],
         );
 
         $ticket = retry(3, fn () => DB::transaction(function () use ($cityVisit, $data, $request) {
             $last = QueueTicket::where('city_visit_id', $cityVisit->id)->where('type', $data['type'])->lockForUpdate()->max('number');
+            $next = ((int) $last) + 1;
+            if (isset($data['number']) && (int) $data['number'] !== $next) {
+                $printed = new QueueTicket(['type' => $data['type'], 'number' => (int) $data['number']]);
+                $free = new QueueTicket(['type' => $data['type'], 'number' => $next]);
+                throw ValidationException::withMessages(['number' => "A senha {$printed->code()} já foi emitida em outro computador. Imprima de novo: a próxima é {$free->code()}."]);
+            }
 
             return QueueTicket::create([
                 'city_visit_id' => $cityVisit->id,
                 'type' => $data['type'],
-                'number' => ((int) $last) + 1,
+                'number' => $next,
                 'user_id' => $request->user()->id,
             ]);
         }), 50, fn ($e) => $e instanceof UniqueConstraintViolationException);
@@ -51,16 +59,22 @@ class QueueTicketController extends Controller
     }
 
     /**
-     * Chama a próxima senha: prioridade primeiro; dentro do tipo, a de menor número.
+     * Chama a próxima senha. Com `type` (duas filas, 12/11/2026), a próxima daquela fila; sem, a prioridade primeiro.
+     * Dentro do tipo, a de menor número.
      */
     public function callNext(Request $request, CityVisit $cityVisit): JsonResponse
     {
-        $ticket = DB::transaction(function () use ($cityVisit, $request) {
+        $data = $request->validate(['type' => ['nullable', Rule::in(array_keys(QueueTicket::TYPES))]], ['type.in' => 'Escolha a fila normal ou prioridade.']);
+        $type = $data['type'] ?? null;
+
+        $ticket = DB::transaction(function () use ($cityVisit, $request, $type) {
             $next = QueueTicket::where('city_visit_id', $cityVisit->id)->whereNull('called_at')
+                ->when($type, fn ($q) => $q->where('type', $type))
                 ->orderByRaw("CASE WHEN type = 'priority' THEN 0 ELSE 1 END")->orderBy('number')
                 ->lockForUpdate()->first();
             if (! $next) {
-                throw ValidationException::withMessages(['ticket' => 'Não há senha aguardando.']);
+                $queue = $type ? ' na fila '.($type === 'priority' ? 'prioridade' : 'normal') : '';
+                throw ValidationException::withMessages(['ticket' => "Não há senha aguardando{$queue}."]);
             }
             $next->update(['called_at' => now(), 'called_by' => $request->user()->id]);
 
@@ -82,6 +96,16 @@ class QueueTicketController extends Controller
     }
 
     /**
+     * Zerar a fila (só o admin, 12/11/2026): apaga todas as senhas do atendimento; as duas filas voltam para 001.
+     */
+    public function reset(CityVisit $cityVisit): JsonResponse
+    {
+        QueueTicket::where('city_visit_id', $cityVisit->id)->delete();
+
+        return response()->json(['data' => $this->queue($cityVisit)]);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function queue(CityVisit $cityVisit): array
@@ -97,6 +121,11 @@ class QueueTicketController extends Controller
             'issued' => [
                 'normal' => $tickets->where('type', 'normal')->count(),
                 'priority' => $tickets->where('type', 'priority')->count(),
+            ],
+            // A próxima a emitir de cada tipo (o painel imprime com ela e grava depois de confirmar).
+            'next_number' => [
+                'normal' => ((int) $tickets->where('type', 'normal')->max('number')) + 1,
+                'priority' => ((int) $tickets->where('type', 'priority')->max('number')) + 1,
             ],
         ];
     }

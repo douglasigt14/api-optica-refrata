@@ -173,17 +173,19 @@ class AdminProspectorTest extends TestCase
         $this->assertSame(0, $user->tokens()->count());
     }
 
-    public function test_field_agent_only_reads(): void
+    /** Desde 12/11/2026 o atendente também cadastra, edita, bloqueia e troca a senha do parceiro. */
+    public function test_field_agent_manages_prospectors(): void
     {
         $prospector = Prospector::factory()->create();
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
 
         $this->getJson('/api/admin/prospectors')->assertOk();
         $this->getJson("/api/admin/prospectors/{$prospector->id}")->assertOk();
-        $this->patchJson("/api/admin/prospectors/{$prospector->id}", ['name' => 'X'])->assertForbidden();
-        $this->postJson("/api/admin/prospectors/{$prospector->id}/block")->assertForbidden();
-        $this->putJson("/api/admin/prospectors/{$prospector->id}/password", ['password' => 'novasenha123'])->assertForbidden();
-        $this->postJson('/api/admin/prospectors', [])->assertForbidden();
+        $this->postJson('/api/admin/prospectors', [])->assertUnprocessable();
+        $this->patchJson("/api/admin/prospectors/{$prospector->id}", ['name' => 'Maria Editada'])->assertOk()->assertJsonPath('data.name', 'Maria Editada');
+        $this->postJson("/api/admin/prospectors/{$prospector->id}/block")->assertSuccessful();
+        $this->deleteJson("/api/admin/prospectors/{$prospector->id}/block")->assertSuccessful();
+        $this->putJson("/api/admin/prospectors/{$prospector->id}/password", ['password' => 'novasenha123'])->assertNoContent();
     }
 
     public function test_field_agent_marks_a_prospector_as_trusted_and_new_leads_get_scheduled(): void

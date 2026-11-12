@@ -79,9 +79,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/prospectors/{prospector}', [Admin\ProspectorController::class, 'show'])->whereNumber('prospector')->name('prospectors.show');
             Route::post('/prospectors/{prospector}/trust', [Admin\ProspectorController::class, 'trust'])->name('prospectors.trust');
             Route::delete('/prospectors/{prospector}/trust', [Admin\ProspectorController::class, 'untrust'])->name('prospectors.untrust');
+            // Desde 12/11/2026 o atendente também cadastra, edita, bloqueia e troca a senha do parceiro.
+            Route::post('/prospectors', [Admin\ProspectorController::class, 'store'])->name('prospectors.store');
+            Route::patch('/prospectors/{prospector}', [Admin\ProspectorController::class, 'update'])->name('prospectors.update');
+            Route::post('/prospectors/{prospector}/block', [Admin\ProspectorController::class, 'block'])->name('prospectors.block');
+            Route::delete('/prospectors/{prospector}/block', [Admin\ProspectorController::class, 'unblock'])->name('prospectors.unblock');
+            Route::put('/prospectors/{prospector}/password', [Admin\ProspectorController::class, 'updatePassword'])->name('prospectors.password');
 
             Route::get('/city-visits', [Admin\CityVisitController::class, 'index'])->name('city-visits.index');
             Route::get('/city-visits/{cityVisit}', [Admin\CityVisitController::class, 'show'])->name('city-visits.show');
+            // Desde 12/11/2026 o atendente também cria e edita atendimentos.
+            Route::post('/city-visits', [Admin\CityVisitController::class, 'store'])->name('city-visits.store');
+            Route::patch('/city-visits/{cityVisit}', [Admin\CityVisitController::class, 'update'])->name('city-visits.update');
 
             Route::get('/lead-statuses', [Admin\LeadStatusController::class, 'index'])->name('lead-statuses.index');
             Route::get('/leads', [Admin\LeadController::class, 'index'])->name('leads.index');
@@ -127,19 +136,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         });
 
         Route::middleware('role:admin')->group(function () {
-            Route::post('/city-visits', [Admin\CityVisitController::class, 'store'])->name('city-visits.store');
             Route::post('/sales/{sale}/cancel', [Admin\SaleController::class, 'cancel'])->name('sales.cancel');
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
             // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
             Route::get('/sale-settings', [Admin\SaleController::class, 'settings'])->name('sale-settings.show');
             Route::put('/sale-settings', [Admin\SaleController::class, 'saveSettings'])->name('sale-settings.update');
-            Route::patch('/city-visits/{cityVisit}', [Admin\CityVisitController::class, 'update'])->name('city-visits.update');
-
-            Route::post('/prospectors', [Admin\ProspectorController::class, 'store'])->name('prospectors.store');
-            Route::patch('/prospectors/{prospector}', [Admin\ProspectorController::class, 'update'])->name('prospectors.update');
-            Route::post('/prospectors/{prospector}/block', [Admin\ProspectorController::class, 'block'])->name('prospectors.block');
-            Route::delete('/prospectors/{prospector}/block', [Admin\ProspectorController::class, 'unblock'])->name('prospectors.unblock');
-            Route::put('/prospectors/{prospector}/password', [Admin\ProspectorController::class, 'updatePassword'])->name('prospectors.password');
 
             Route::apiResource('users', Admin\TeamUserController::class)->except('show');
 

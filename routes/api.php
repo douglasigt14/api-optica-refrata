@@ -59,6 +59,9 @@ Route::middleware(['auth:api', 'use-company'])->group(function () {
 | cabeçalho X-Company (ver UseCompany); quem tem uma ótica só não precisa mandar.
 | admin: tudo · field_agent: atendimentos, parceiros (ver e marcar como confiável) e indicações · factory: só entra.
 */
+// Logo das impressões da ótica por link assinado (`print_logo_url`), sem token.
+Route::get('/companies/{company}/print-logo', [Admin\SettingsController::class, 'printLogo'])->middleware('signed')->name('companies.print-logo');
+
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/login', [Admin\AuthController::class, 'login'])->middleware('throttle:10,1')->name('login');
 
@@ -72,6 +75,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::middleware('role:admin,field_agent')->group(function () {
             Route::get('/dashboard', Admin\DashboardController::class)->name('dashboard');
+            // Configurações da ótica: o atendente lê (a logo sai no cupom que ele imprime).
+            Route::get('/settings', [Admin\SettingsController::class, 'show'])->name('settings.show');
 
             Route::get('/cities', [Admin\CityController::class, 'index'])->name('cities.index');
             Route::get('/prospectors', [Admin\ProspectorController::class, 'index'])->name('prospectors.index');
@@ -140,6 +145,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('role:admin')->group(function () {
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
             // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
+            Route::post('/settings/print-logo', [Admin\SettingsController::class, 'storePrintLogo'])->name('settings.print-logo.store');
+            Route::delete('/settings/print-logo', [Admin\SettingsController::class, 'destroyPrintLogo'])->name('settings.print-logo.destroy');
             Route::get('/sale-settings', [Admin\SaleController::class, 'settings'])->name('sale-settings.show');
             Route::put('/sale-settings', [Admin\SaleController::class, 'saveSettings'])->name('sale-settings.update');
 

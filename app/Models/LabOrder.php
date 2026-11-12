@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Support\CrmAuto;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,6 +39,8 @@ class LabOrder extends Model
             Company::query()->whereKey($order->company_id)->lockForUpdate()->value('id');
             $order->number = (int) static::withoutGlobalScopes()->where('company_id', $order->company_id)->max('number') + 1;
         });
+        // CRM (12/11/2026): pedido no atendimento leva o cliente a "Foi ao atendimento".
+        static::created(fn (LabOrder $order) => CrmAuto::fromOrder($order));
     }
 
     protected function casts(): array

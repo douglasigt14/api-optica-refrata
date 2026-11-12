@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\ClientRequest;
 use App\Http\Resources\Admin\ClientResource;
 use App\Models\Client;
 use App\Models\Sale;
+use App\Support\PhonePrivacy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -36,7 +37,10 @@ class ClientController extends Controller
             ->when($filters['city_id'] ?? null, fn ($q, $id) => $q->where('city_id', $id))
             ->when(trim($filters['search'] ?? ''), function ($q, string $search) {
                 $digits = preg_replace('/\D/', '', $search);
-                $q->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->when($digits !== '', fn ($q) => $q->orWhere('phone_number', 'like', "%{$digits}%")->orWhere('cpf', 'like', "{$digits}%")));
+                // Buscar pelo telefone só o admin (sigilo, 12/11/2026); pelo CPF, todos.
+                $q->where(fn ($q) => $q->where('name', 'like', "%{$search}%")
+                    ->when($digits !== '' && PhonePrivacy::canSee(), fn ($q) => $q->orWhere('phone_number', 'like', "%{$digits}%"))
+                    ->when($digits !== '', fn ($q) => $q->orWhere('cpf', 'like', "{$digits}%")));
             })
             ->orderBy('name')
             ->orderBy('id')
@@ -59,7 +63,12 @@ class ClientController extends Controller
 
     public function update(ClientRequest $request, Client $client): ClientResource
     {
-        $client->update($request->validated());
+        $data = $request->validated();
+        // Quem não vê o número só pode trocá-lo por outro: telefone vazio mantém o atual (não apaga sem ver).
+        if (! PhonePrivacy::canSee($request) && empty($data['phone_number'])) {
+            unset($data['phone_number']);
+        }
+        $client->update($data);
 
         return new ClientResource($client->load('city:id,name,state'));
     }

@@ -5,6 +5,7 @@ namespace App\Http\Resources\Admin;
 use App\Models\LabOrder;
 use App\Models\Sale;
 use App\Models\SalePayment;
+use App\Support\PhonePrivacy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -33,7 +34,7 @@ class SaleResource extends JsonResource
                 'id' => $this->client->id,
                 'name' => $this->client->name,
                 'cpf' => $this->client->cpf,
-                'phone_number' => $this->client->phone_number,
+                ...PhonePrivacy::fields($this->client->phone_number, $request),
                 'address' => $this->client->address,
                 'city' => $this->client->city?->name,
             ] : null,

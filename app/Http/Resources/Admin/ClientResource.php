@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Models\Client;
+use App\Support\PhonePrivacy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,7 +21,8 @@ class ClientResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'cpf' => $this->cpf,
-            'phone_number' => $this->phone_number,
+            // Sigilo (12/11/2026): o número só para o admin; os outros recebem o mascarado.
+            ...PhonePrivacy::fields($this->phone_number, $request),
             'address' => $this->address,
             'birth_date' => $this->birth_date?->toDateString(),
             // Idade hoje (pela data de nascimento ou pela informada).

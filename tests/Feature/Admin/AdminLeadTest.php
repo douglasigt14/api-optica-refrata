@@ -52,9 +52,11 @@ class AdminLeadTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'data')
             ->assertJsonPath('meta.total', 2)
-            ->assertJsonStructure(['data' => [['id', 'name', 'phone_number', 'status', 'appointment_date', 'city', 'visit', 'prospector' => ['id', 'name'], 'contacts_count']]]);
+            ->assertJsonStructure(['data' => [['id', 'name', 'phone_number', 'phone_masked', 'has_phone', 'status', 'appointment_date', 'city', 'visit', 'prospector' => ['id', 'name'], 'contacts_count']]]);
 
-        foreach (["city_id={$city->id}", "prospector_id={$prospector->id}", 'search=souza', 'search=(88) 99999-1234', 'stage=new&search=maria'] as $query) {
+        // Pelo telefone, só o admin busca (sigilo, 12/11/2026; ver PhonePrivacyTest).
+        $this->getJson('/api/admin/leads?search=(88) 99999-1234')->assertJsonCount(0, 'data');
+        foreach (["city_id={$city->id}", "prospector_id={$prospector->id}", 'search=souza', 'stage=new&search=maria'] as $query) {
             $this->getJson("/api/admin/leads?{$query}")
                 ->assertOk()
                 ->assertJsonCount(1, 'data')
@@ -82,7 +84,7 @@ class AdminLeadTest extends TestCase
         $this->postJson('/api/admin/leads', $lead())
             ->assertCreated()
             ->assertJsonPath('data.name', 'João Pereira')
-            ->assertJsonPath('data.phone_number', '88988887777')
+            ->assertJsonPath('data.phone_masked', '(88) 9••••-••77')
             ->assertJsonPath('data.prospector.name', 'Carlos Parceiro')
             ->assertJsonPath('data.visit.id', $visit->id)
             ->assertJsonPath('data.status.stage', 'new');

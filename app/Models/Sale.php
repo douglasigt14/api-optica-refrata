@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Support\CrmAuto;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +21,12 @@ use Illuminate\Support\Collection;
 class Sale extends Model
 {
     use BelongsToCompany;
+
+    /** CRM (12/11/2026): ficha no atendimento leva o cliente a "Foi ao atendimento"; lançada, a "Comprou de novo". */
+    protected static function booted(): void
+    {
+        static::saved(fn (Sale $sale) => CrmAuto::fromSale($sale));
+    }
 
     protected function casts(): array
     {

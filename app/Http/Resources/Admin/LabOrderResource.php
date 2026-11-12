@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Models\LabOrder;
+use App\Support\PhonePrivacy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,7 +24,7 @@ class LabOrderResource extends JsonResource
             // OS de Ótica: o nº do pedido na empresa (09/11/2026).
             'number' => $this->number,
             'lab' => ['id' => $this->lab->id, 'name' => $this->lab->name],
-            'client' => ['id' => $this->client->id, 'name' => $this->client->name, 'phone_number' => $this->client->phone_number],
+            'client' => ['id' => $this->client->id, 'name' => $this->client->name, ...PhonePrivacy::fields($this->client->phone_number, $request)],
             'user' => $this->user?->name,
             'city_visit' => $this->cityVisit ? [
                 'id' => $this->cityVisit->id,

@@ -25,6 +25,7 @@ class ClientResource extends JsonResource
             'birth_date' => $this->birth_date?->toDateString(),
             // Idade hoje (pela data de nascimento ou pela informada).
             'age' => $this->currentAge(),
+            'wears_glasses' => (bool) $this->wears_glasses,
             'comorbidities' => (object) ($this->comorbidities ?? []),
             'referral_source' => $this->referral_source,
             'city' => $this->city?->only(['id', 'name', 'state']),

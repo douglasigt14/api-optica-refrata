@@ -68,7 +68,9 @@ class AdminAuthTest extends TestCase
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
         $this->getJson('/api/admin/city-visits')->assertOk();
         $this->getJson('/api/admin/leads')->assertOk();
-        $this->postJson('/api/admin/city-visits', [])->assertForbidden();
+        // Desde 12/11/2026 o atendente cria atendimentos (aqui só falta preencher); configurações seguem do admin.
+        $this->postJson('/api/admin/city-visits', [])->assertUnprocessable();
+        $this->getJson('/api/admin/sale-settings')->assertForbidden();
         $this->getJson('/api/admin/users')->assertForbidden();
     }
 

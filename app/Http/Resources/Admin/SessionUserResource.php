@@ -34,7 +34,8 @@ class SessionUserResource extends TeamUserResource
                     'role' => $role,
                     'role_label' => $role?->label(),
                     'console_id' => $company->console_id,
-                    'invite_code' => $role === UserRole::Admin ? $company->invite_code : null,
+                    // Código de convite dos parceiros: o atendente também vê (12/11/2026), para passar ao parceiro novo.
+                    'invite_code' => in_array($role, [UserRole::Admin, UserRole::FieldAgent], true) ? $company->invite_code : null,
                     'financial_url' => $role === UserRole::Admin ? $company->financial_url : null,
                 ];
             })->values(),

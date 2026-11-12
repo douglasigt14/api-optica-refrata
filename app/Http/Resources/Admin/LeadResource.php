@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Models\Lead;
+use App\Support\PhonePrivacy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,7 +22,8 @@ class LeadResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'phone_number' => $this->phone_number,
+            // Sigilo (12/11/2026): o número só para o admin; os outros recebem o mascarado.
+            ...PhonePrivacy::fields($this->phone_number, $request),
             'stage' => $this->stage,
             'status' => new LeadStatusResource($this->status),
             'appointment_date' => $this->appointment_date?->toDateString(),

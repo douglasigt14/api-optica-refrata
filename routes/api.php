@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\PlatformPairingController;
 use App\Http\Controllers\Api\PlatformUserController;
+use App\Http\Controllers\Api\WhatsAppWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/cities', [CityController::class, 'index']);
@@ -38,6 +39,8 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
 Route::post('/integration/lab-orders/status', [LabIntegrationController::class, 'status'])->middleware(['lab-integration', 'throttle:120,1'])->name('integration.lab-orders.status');
 // Atendimentos da ótica, para o laboratório ligar o lote a um deles (mesma chave do aviso).
 Route::get('/integration/city-visits', [LabIntegrationController::class, 'cityVisits'])->middleware(['lab-integration', 'throttle:120,1'])->name('integration.city-visits');
+// Webhook do servidor do WhatsApp (CRM, 12/11/2026): conferido pelo segredo do número (cabeçalho X-Webhook-Secret).
+Route::post('/integration/whatsapp/{number}', WhatsAppWebhookController::class)->whereNumber('number')->middleware('throttle:600,1')->name('integration.whatsapp');
 
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -104,6 +107,26 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::patch('/leads/{lead}/schedule', [Admin\LeadController::class, 'schedule'])->name('leads.schedule');
             Route::patch('/leads/{lead}/status', [Admin\LeadController::class, 'updateStatus'])->name('leads.status');
             Route::post('/leads/{lead}/contacts', [Admin\LeadController::class, 'storeContact'])->name('leads.contacts.store');
+            // CRM da Ótica (12/11/2026): os clientes de cada atendimento, contatos, etapas e resultados.
+            Route::get('/crm/visits', [Admin\CrmController::class, 'visits'])->name('crm.visits');
+            Route::get('/crm/follow-ups', [Admin\CrmController::class, 'followUps'])->name('crm.follow-ups');
+            Route::get('/crm/visits/{cityVisit}', [Admin\CrmController::class, 'summary'])->name('crm.summary');
+            Route::get('/crm/visits/{cityVisit}/clients', [Admin\CrmController::class, 'clients'])->name('crm.clients');
+            Route::post('/crm/visits/{cityVisit}/no-shows', [Admin\CrmController::class, 'noShows'])->name('crm.no-shows');
+            Route::get('/crm/visits/{cityVisit}/clients/{client}', [Admin\CrmController::class, 'client'])->name('crm.client');
+            Route::post('/crm/visits/{cityVisit}/clients/{client}/contacts', [Admin\CrmController::class, 'contact'])->name('crm.contact');
+            Route::put('/crm/visits/{cityVisit}/clients/{client}/stage', [Admin\CrmController::class, 'stage'])->name('crm.stage');
+            // WhatsApp do CRM (fase 4): conversas, enviar texto/modelo/áudio e tocar a mídia. O número nunca sai na resposta.
+            Route::get('/whatsapp/conversations', [Admin\WhatsAppChatController::class, 'index'])->name('whatsapp.conversations.index');
+            Route::post('/whatsapp/conversations/start', [Admin\WhatsAppChatController::class, 'start'])->name('whatsapp.conversations.start');
+            Route::get('/whatsapp/conversations/{conversation}', [Admin\WhatsAppChatController::class, 'show'])->whereNumber('conversation')->name('whatsapp.conversations.show');
+            Route::post('/whatsapp/conversations/{conversation}/messages', [Admin\WhatsAppChatController::class, 'send'])->whereNumber('conversation')->name('whatsapp.conversations.send');
+            Route::post('/whatsapp/conversations/{conversation}/audio', [Admin\WhatsAppChatController::class, 'audio'])->whereNumber('conversation')->name('whatsapp.conversations.audio');
+            Route::get('/whatsapp/messages/{message}/media', [Admin\WhatsAppChatController::class, 'media'])->name('whatsapp.messages.media');
+            Route::get('/message-templates', [Admin\MessageTemplateController::class, 'index'])->name('message-templates.index');
+            // Ligar pelo WhatsApp (12/11/2026): o link com o número sai só no clique, e fica registrado.
+            Route::post('/leads/{lead}/whatsapp-link', [Admin\WhatsAppLinkController::class, 'lead'])->name('leads.whatsapp-link');
+            Route::post('/clients/{client}/whatsapp-link', [Admin\WhatsAppLinkController::class, 'client'])->name('clients.whatsapp-link');
 
             // Clientes e pedidos aos laboratórios do grupo (passo 3 do roteiro).
             Route::apiResource('clients', Admin\ClientController::class)->except('destroy');
@@ -149,6 +172,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::middleware('role:admin')->group(function () {
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
+            // Configurações ▸ WhatsApp (CRM, 12/11/2026): números (QR Code), modelos de mensagem e disparo (só com a API oficial).
+            Route::get('/whatsapp/numbers', [Admin\WhatsAppNumberController::class, 'index'])->name('whatsapp.numbers.index');
+            Route::post('/whatsapp/numbers', [Admin\WhatsAppNumberController::class, 'store'])->name('whatsapp.numbers.store');
+            Route::patch('/whatsapp/numbers/{whatsappNumber}', [Admin\WhatsAppNumberController::class, 'update'])->name('whatsapp.numbers.update');
+            Route::delete('/whatsapp/numbers/{whatsappNumber}', [Admin\WhatsAppNumberController::class, 'destroy'])->name('whatsapp.numbers.destroy');
+            Route::get('/whatsapp/numbers/{whatsappNumber}/qr', [Admin\WhatsAppNumberController::class, 'qr'])->name('whatsapp.numbers.qr');
+            Route::post('/whatsapp/numbers/{whatsappNumber}/disconnect', [Admin\WhatsAppNumberController::class, 'disconnect'])->name('whatsapp.numbers.disconnect');
+            Route::post('/message-templates', [Admin\MessageTemplateController::class, 'store'])->name('message-templates.store');
+            Route::patch('/message-templates/{messageTemplate}', [Admin\MessageTemplateController::class, 'update'])->name('message-templates.update');
+            Route::delete('/message-templates/{messageTemplate}', [Admin\MessageTemplateController::class, 'destroy'])->name('message-templates.destroy');
+            Route::get('/whatsapp/broadcasts', [Admin\WhatsAppBroadcastController::class, 'index'])->name('whatsapp.broadcasts.index');
+            Route::post('/whatsapp/broadcasts', [Admin\WhatsAppBroadcastController::class, 'store'])->name('whatsapp.broadcasts.store');
             // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
             // Zerar a fila do atendimento (12/11/2026): apaga as senhas e a contagem volta para 001.
             Route::delete('/lab-order-visits/{cityVisit}/tickets', [Admin\QueueTicketController::class, 'reset'])->name('lab-order-visits.tickets.reset');

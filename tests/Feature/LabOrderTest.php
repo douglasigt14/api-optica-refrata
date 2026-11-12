@@ -103,7 +103,7 @@ class LabOrderTest extends TestCase
         $this->postJson('/api/admin/clients', ['name' => 'Maria', 'phone_number' => '88999990000', 'city_id' => $other->id, 'birth_date' => '1990-05-01'])
             ->assertJsonValidationErrors(['city_id' => 'Escolha uma cidade atendida pela ótica.']);
         $id = $this->postJson('/api/admin/clients', ['name' => 'Maria Souza', 'phone_number' => '(88) 99999-0000', 'city_id' => $this->city->id, 'birth_date' => '1990-04-01'])
-            ->assertCreated()->assertJsonPath('data.phone_number', '88999990000')->json('data.id');
+            ->assertCreated()->assertJsonPath('data.phone_masked', '(88) 9••••-••00')->json('data.id');
         $this->patchJson("/api/admin/clients/{$id}", ['name' => 'Maria S. Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id, 'birth_date' => '1990-05-01'])->assertOk();
         $this->getJson('/api/admin/clients?search=souza')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.birth_date', '1990-05-01');
 

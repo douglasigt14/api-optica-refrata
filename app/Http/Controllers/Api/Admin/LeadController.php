@@ -14,6 +14,7 @@ use App\Models\CityVisit;
 use App\Models\Lead;
 use App\Models\LeadStatus;
 use App\Models\Prospector;
+use App\Support\PhonePrivacy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -50,7 +51,8 @@ class LeadController extends Controller
                 $digits = preg_replace('/\D/', '', $search);
                 $q->where(function ($q) use ($search, $digits) {
                     $q->where('name', 'like', "%{$search}%");
-                    if ($digits !== '') {
+                    // Buscar pelo telefone só o admin (sigilo, 12/11/2026).
+                    if ($digits !== '' && PhonePrivacy::canSee()) {
                         $q->orWhere('phone_number', 'like', "%{$digits}%");
                     }
                 });

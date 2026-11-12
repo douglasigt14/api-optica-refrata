@@ -115,6 +115,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/sales/{sale}/orders', [Admin\SaleController::class, 'attachOrder'])->name('sales.orders.store');
             Route::post('/sales/{sale}/launch', [Admin\SaleController::class, 'launch'])->name('sales.launch');
             Route::post('/sales/{sale}/deliver', [Admin\SaleController::class, 'deliver'])->name('sales.deliver');
+            // Cancelar ficha: o atendente também (12/11/2026).
+            Route::post('/sales/{sale}/cancel', [Admin\SaleController::class, 'cancel'])->name('sales.cancel');
             // Pedidos por atendimento (07/11/2026): os atendimentos que recebem pedidos, enviar todos juntos e encerrar.
             Route::get('/lab-order-visits', [Admin\LabOrderController::class, 'visits'])->name('lab-order-visits.index');
             Route::get('/lab-order-visits/{cityVisit}', [Admin\LabOrderController::class, 'visit'])->name('lab-order-visits.show');
@@ -136,7 +138,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
         });
 
         Route::middleware('role:admin')->group(function () {
-            Route::post('/sales/{sale}/cancel', [Admin\SaleController::class, 'cancel'])->name('sales.cancel');
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
             // Configurações das vendas: a conta do Financeiro de cada forma de pagamento.
             Route::get('/sale-settings', [Admin\SaleController::class, 'settings'])->name('sale-settings.show');

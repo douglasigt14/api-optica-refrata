@@ -369,11 +369,9 @@ class SaleTest extends TestCase
         $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'cash', 'amount' => 450]]])->assertOk()->assertJsonPath('data.remaining', '0.00');
         $this->getJson('/api/admin/sales?search=luiza')->assertJsonCount(1, 'data');
 
-        // Cancelar (só o admin, antes de enviar): os óculos pendentes também e o título no Financeiro.
+        // Cancelar (admin e, desde 12/11/2026, o atendente; antes de enviar): os óculos pendentes também e o título no Financeiro.
         $this->financial = [];
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
-        $this->postJson("/api/admin/sales/{$sale}/cancel", ['reason' => 'Desistiu'])->assertForbidden();
-        Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
         $this->postJson("/api/admin/sales/{$sale}/cancel", ['reason' => 'Desistiu'])->assertOk()->assertJsonPath('data.status', 'canceled')
             ->assertJsonPath('data.orders.0.status', 'canceled')->assertJsonPath('data.total', '0.00');
         $this->assertSame("/api/integrations/optica/sales/{$sale}/cancel", $this->financial[0]['url']);

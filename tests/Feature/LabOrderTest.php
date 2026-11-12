@@ -95,22 +95,23 @@ class LabOrderTest extends TestCase
     {
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
 
-        $this->postJson('/api/admin/clients', ['name' => 'Maria'])->assertUnprocessable()->assertJsonValidationErrors(['city_id'])->assertJsonMissingValidationErrors(['phone_number']);
+        $this->postJson('/api/admin/clients', ['name' => 'Maria'])->assertUnprocessable()
+            ->assertJsonValidationErrors(['city_id', 'birth_date' => 'Informe a data de nascimento.'])->assertJsonMissingValidationErrors(['phone_number']);
         // CPF inválido (dígito verificador) não passa.
-        $this->postJson('/api/admin/clients', ['name' => 'Maria', 'city_id' => $this->city->id, 'cpf' => '064.103.073-82'])->assertJsonValidationErrors(['cpf' => 'CPF inválido.']);
+        $this->postJson('/api/admin/clients', ['name' => 'Maria', 'city_id' => $this->city->id, 'birth_date' => '1990-05-01', 'cpf' => '064.103.073-82'])->assertJsonValidationErrors(['cpf' => 'CPF inválido.']);
         $other = City::factory()->inactive()->create();
-        $this->postJson('/api/admin/clients', ['name' => 'Maria', 'phone_number' => '88999990000', 'city_id' => $other->id])
+        $this->postJson('/api/admin/clients', ['name' => 'Maria', 'phone_number' => '88999990000', 'city_id' => $other->id, 'birth_date' => '1990-05-01'])
             ->assertJsonValidationErrors(['city_id' => 'Escolha uma cidade atendida pela ótica.']);
-        $id = $this->postJson('/api/admin/clients', ['name' => 'Maria Souza', 'phone_number' => '(88) 99999-0000', 'city_id' => $this->city->id])
+        $id = $this->postJson('/api/admin/clients', ['name' => 'Maria Souza', 'phone_number' => '(88) 99999-0000', 'city_id' => $this->city->id, 'birth_date' => '1990-04-01'])
             ->assertCreated()->assertJsonPath('data.phone_number', '88999990000')->json('data.id');
         $this->patchJson("/api/admin/clients/{$id}", ['name' => 'Maria S. Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id, 'birth_date' => '1990-05-01'])->assertOk();
         $this->getJson('/api/admin/clients?search=souza')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.birth_date', '1990-05-01');
 
         // Quem paga: CPF (só números, único na ótica) e endereço. O paciente pode vir sem telefone (ex.: criança).
-        $this->patchJson("/api/admin/clients/{$id}", ['name' => 'Maria S. Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id, 'cpf' => '064.103.073-81', 'address' => 'Rua A, 10 - Centro'])
+        $this->patchJson("/api/admin/clients/{$id}", ['name' => 'Maria S. Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id, 'birth_date' => '1990-05-01', 'cpf' => '064.103.073-81', 'address' => 'Rua A, 10 - Centro'])
             ->assertOk()->assertJsonPath('data.cpf', '06410307381')->assertJsonPath('data.address', 'Rua A, 10 - Centro');
         $this->getJson('/api/admin/clients?search=064.103')->assertJsonCount(1, 'data');
-        $this->postJson('/api/admin/clients', ['name' => 'Outra', 'city_id' => $this->city->id, 'cpf' => '06410307381'])->assertJsonValidationErrors(['cpf' => 'Já há um cliente com este CPF.']);
+        $this->postJson('/api/admin/clients', ['name' => 'Outra', 'city_id' => $this->city->id, 'birth_date' => '1990-05-01', 'cpf' => '06410307381'])->assertJsonValidationErrors(['cpf' => 'Já há um cliente com este CPF.']);
         $this->postJson('/api/admin/clients', ['name' => 'Pedro (filho)', 'city_id' => $this->city->id, 'birth_date' => '2016-10-02'])->assertCreated()->assertJsonPath('data.phone_number', null);
 
         // De outra ótica, não aparece.
@@ -118,29 +119,40 @@ class LabOrderTest extends TestCase
         $this->getJson("/api/admin/clients/{$theirs->id}")->assertNotFound();
     }
 
-    /** Cadastro do cliente (10/11/2026): comorbidades, como conheceu a ótica e a idade (pela data ou informada). */
+    /**
+     * Cadastro do cliente (10/11/2026): comorbidades, como conheceu a ótica e a idade. Desde 12/11/2026 a data de
+     * nascimento é obrigatória e a idade sai sempre dela (a idade digitada não é mais aceita).
+     */
     public function test_client_has_comorbidities_referral_and_age(): void
     {
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
-        $base = ['name' => 'Pedro (filho)', 'city_id' => $this->city->id];
+        $base = ['name' => 'Pedro (filho)', 'city_id' => $this->city->id, 'birth_date' => today()->subYears(8)->subDay()->toDateString()];
 
-        $id = $this->postJson('/api/admin/clients', [...$base, 'age' => 8, 'referral_source' => 'instagram', 'comorbidities' => ['diabetes' => ['family', 'family'], 'glaucoma' => ['self', 'family'], 'blindness' => []]])
+        $id = $this->postJson('/api/admin/clients', [...$base, 'age' => 30, 'referral_source' => 'instagram', 'comorbidities' => ['diabetes' => ['family', 'family'], 'glaucoma' => ['self', 'family'], 'blindness' => []]])
             ->assertCreated()
             ->assertJsonPath('data.age', 8)
+            ->assertJsonPath('data.wears_glasses', false)
             ->assertJsonPath('data.referral_source', 'instagram')
             ->assertJsonPath('data.comorbidities', ['diabetes' => ['family'], 'glaucoma' => ['self', 'family']])
             ->json('data.id');
-        // A idade informada cresce com o tempo.
+        $this->assertNull(Client::find($id)->getRawOriginal('age'));
         $this->travel(2)->years();
         $this->getJson("/api/admin/clients/{$id}")->assertJsonPath('data.age', 10);
         $this->travelBack();
 
-        // Com data de nascimento, a idade sai dela e a informada some.
-        $this->patchJson("/api/admin/clients/{$id}", [...$base, 'birth_date' => today()->subYears(9)->subDay()->toDateString(), 'age' => 30])->assertOk()->assertJsonPath('data.age', 9);
-        $this->assertNull(Client::find($id)->getRawOriginal('age'));
+        // Já usa óculos (12/11/2026).
+        $this->patchJson("/api/admin/clients/{$id}", [...$base, 'wears_glasses' => true])->assertOk()->assertJsonPath('data.wears_glasses', true);
+        $this->patchJson("/api/admin/clients/{$id}", [...$base, 'wears_glasses' => 'talvez'])->assertJsonValidationErrors(['wears_glasses']);
 
-        $this->postJson('/api/admin/clients', [...$base, 'referral_source' => 'tv', 'comorbidities' => ['asma' => ['self']], 'age' => 200])
-            ->assertJsonValidationErrors(['referral_source', 'comorbidities', 'age']);
+        // Cliente antigo, só com a idade: editar exige a data.
+        $old = Client::create(['name' => 'Antigo', 'city_id' => $this->city->id, 'age' => 40]);
+        $this->patchJson("/api/admin/clients/{$old->id}", ['name' => 'Antigo', 'city_id' => $this->city->id, 'age' => 40])
+            ->assertJsonValidationErrors(['birth_date' => 'Informe a data de nascimento.']);
+        $this->patchJson("/api/admin/clients/{$old->id}", ['name' => 'Antigo', 'city_id' => $this->city->id, 'birth_date' => '1980-01-01'])->assertOk();
+        $this->assertNull($old->fresh()->getRawOriginal('age'));
+
+        $this->postJson('/api/admin/clients', [...$base, 'referral_source' => 'tv', 'comorbidities' => ['asma' => ['self']], 'birth_date' => today()->addDay()->toDateString()])
+            ->assertJsonValidationErrors(['referral_source', 'comorbidities', 'birth_date']);
         $this->postJson('/api/admin/clients', [...$base, 'comorbidities' => ['diabetes' => ['amigo']]])->assertJsonValidationErrors(['comorbidities.diabetes.0']);
         $this->postJson('/api/admin/clients', [...$base, 'comorbidities' => ['diabetes' => []]])->assertCreated()->assertJsonPath('data.comorbidities', []);
     }

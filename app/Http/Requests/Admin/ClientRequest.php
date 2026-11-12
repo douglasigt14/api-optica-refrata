@@ -11,7 +11,8 @@ use Illuminate\Validation\Rule;
 
 /**
  * Cliente da ótica (também o paciente dos pedidos ao laboratório): nome, telefone e cidade (uma das atendidas)
- * obrigatórios; nascimento (ou a idade), comorbidades e como conheceu a ótica opcionais.
+ * e data de nascimento obrigatórios (12/11/2026; a idade sai dela); se já usa óculos, comorbidades e como conheceu a ótica opcionais.
+ * Clientes antigos, sem a data, só precisam dela quando o cadastro for editado.
  */
 class ClientRequest extends FormRequest
 {
@@ -27,9 +28,9 @@ class ClientRequest extends FormRequest
             'cpf' => ['nullable', 'digits:11', new Cpf, CurrentCompany::unique('clients', 'cpf')->ignore($this->route('client'))],
             'address' => ['nullable', 'string', 'max:200'],
             'city_id' => ['required', 'integer', CurrentCompany::servedCity()],
-            'birth_date' => ['nullable', 'date', 'before:today'],
-            // Idade digitada: só vale sem data de nascimento (com a data, a idade sai dela).
-            'age' => ['nullable', 'integer', 'min:0', 'max:120'],
+            'birth_date' => ['required', 'date', 'before:today'],
+            // Já usa óculos (12/11/2026); sem o campo, fica como está (novo cliente: não).
+            'wears_glasses' => ['sometimes', 'boolean'],
             // { "diabetes": ["self", "family"], "glaucoma": ["family"] }: só as marcadas.
             'comorbidities' => ['nullable', 'array:'.implode(',', Client::COMORBIDITIES)],
             'comorbidities.*' => ['array'],
@@ -50,10 +51,8 @@ class ClientRequest extends FormRequest
             'phone_number.digits_between' => 'Telefone com DDD: 10 ou 11 dígitos.',
             'city_id.required' => 'Escolha a cidade.',
             'city_id.exists' => 'Escolha uma cidade atendida pela ótica.',
+            'birth_date.required' => 'Informe a data de nascimento.',
             'birth_date.before' => 'A data de nascimento precisa ser antes de hoje.',
-            'age.min' => 'Idade inválida.',
-            'age.max' => 'Idade inválida.',
-            'age.integer' => 'Idade inválida.',
         ];
     }
 

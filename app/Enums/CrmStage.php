@@ -10,9 +10,11 @@ enum CrmStage: string
 {
     case ToContact = 'to_contact';
     case Talking = 'talking';
-    /** Tentou e não conseguiu falar (não respondeu ou número errado; 12/11/2026). */
+    /** "Não atendeu": tentou e não conseguiu falar (não respondeu ou número errado; 12/11/2026). */
     case NoSuccess = 'no_success';
     case Booked = 'booked';
+    /** Precisa de novo contato (só arrastando no quadro; 12/11/2026). */
+    case Recontact = 'recontact';
     case Attended = 'attended';
     case Bought = 'bought';
     case NoShow = 'no_show';
@@ -23,8 +25,9 @@ enum CrmStage: string
         return match ($this) {
             self::ToContact => 'A contatar',
             self::Talking => 'Em conversa',
-            self::NoSuccess => 'Sem sucesso',
+            self::NoSuccess => 'Não atendeu',
             self::Booked => 'Marcou',
+            self::Recontact => 'Re-contato',
             self::Attended => 'Foi ao atendimento',
             self::Bought => 'Comprou de novo',
             self::NoShow => 'Não foi',

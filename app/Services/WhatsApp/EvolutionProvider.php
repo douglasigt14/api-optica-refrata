@@ -38,7 +38,9 @@ class EvolutionProvider implements Provider
                 'byEvents' => false,
                 'base64' => true,
                 'headers' => ['X-Webhook-Secret' => $webhookSecret],
-                'events' => ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
+                // Sem MESSAGES_UPDATE (12/11/2026): o aviso de enviada/entregue/lida vinha 3 vezes por mensagem e gastava o
+                // limite de 500 conexões por hora do banco da Hostinger. Os tiques de entregue/lida ficam para o tempo real.
+                'events' => ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
             ],
         ]));
     }

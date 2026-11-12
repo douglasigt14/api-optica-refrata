@@ -130,6 +130,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::delete('/lab-order-visits/{cityVisit}/close', [Admin\LabOrderController::class, 'reopenOrders'])->name('lab-order-visits.reopen');
             Route::put('/lab-order-visits/{cityVisit}/delivery', [Admin\SaleController::class, 'visitDelivery'])->name('lab-order-visits.delivery');
             // Relatório das fichas do atendimento (09/11/2026): pago, como e o que fica para a entrega.
+            // Senhas da fila do atendimento (12/11/2026): emitir (N001…/P001…) e chamar.
+            Route::get('/lab-order-visits/{cityVisit}/tickets', [Admin\QueueTicketController::class, 'index'])->name('lab-order-visits.tickets.index');
+            Route::post('/lab-order-visits/{cityVisit}/tickets', [Admin\QueueTicketController::class, 'store'])->name('lab-order-visits.tickets.store');
+            Route::post('/lab-order-visits/{cityVisit}/tickets/call-next', [Admin\QueueTicketController::class, 'callNext'])->name('lab-order-visits.tickets.call-next');
+            Route::post('/lab-order-visits/{cityVisit}/tickets/{ticket}/call', [Admin\QueueTicketController::class, 'call'])->whereNumber('ticket')->name('lab-order-visits.tickets.call');
             Route::get('/lab-order-visits/{cityVisit}/sales-report', [Admin\SaleController::class, 'visitReport'])->name('lab-order-visits.sales-report');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).

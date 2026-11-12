@@ -123,6 +123,9 @@ class CrmTest extends TestCase
             ->assertOk()->assertJsonPath('data.stage', 'booked');
         $this->putJson($this->url("/clients/{$bia->id}/stage"), ['stage' => 'booked'])->assertOk();
 
+        // Re-contato: só arrastando.
+        $this->putJson($this->url("/clients/{$bia->id}/stage"), ['stage' => 'recontact'])->assertOk()->assertJsonPath('data.stage_label', 'Re-contato');
+        $this->putJson($this->url("/clients/{$bia->id}/stage"), ['stage' => 'booked'])->assertOk();
         $this->postJson($this->url('/no-shows'))->assertOk()->assertJsonPath('data.count', 2);
         $this->getJson($this->url())->assertJsonPath('data.results.no_show', 2)->assertJsonPath('data.results.attendance_rate', 0);
         $this->getJson($this->url("/clients/{$ana->id}"))->assertJsonPath('data.stage', 'no_show')->assertJsonPath('data.timeline.0.kind', 'auto');

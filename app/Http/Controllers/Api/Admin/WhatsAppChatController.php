@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CityVisit;
 use App\Models\Client;
+use App\Models\CrmEntry;
 use App\Models\Lead;
 use App\Models\MessageTemplate;
 use App\Models\WhatsAppConversation;
@@ -29,7 +30,7 @@ class WhatsAppChatController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate(['unread' => ['nullable', 'boolean'], 'search' => ['nullable', 'string', 'max:100']]);
-        $conversations = WhatsAppConversation::query()->with(['client:id,name,phone_number', 'lead:id,name,phone_number', 'number:id,name'])
+        $conversations = WhatsAppConversation::query()->with(['client:id,name,phone_number,city_id', 'client.city:id,name', 'lead:id,name,phone_number,city_id,stage', 'lead.city:id,name', 'number:id,name'])
             ->whereNotNull('last_message_at')
             ->when($filters['unread'] ?? false, fn ($q) => $q->where('unread_count', '>', 0))
             ->when(trim($filters['search'] ?? ''), fn ($q, $s) => $q->where(fn ($q) => $q->where('push_name', 'like', "%{$s}%")
@@ -37,7 +38,9 @@ class WhatsAppChatController extends Controller
                 ->orWhereHas('lead', fn ($q) => $q->where('name', 'like', "%{$s}%"))))
             ->orderByRaw('unread_count > 0 DESC')->orderByDesc('last_message_at')->limit(100)->get();
 
-        return response()->json(['data' => $conversations->map(fn (WhatsAppConversation $c) => self::conversationData($c))->values()]);
+        $crm = self::latestCrm($conversations->pluck('client_id')->filter()->unique()->all());
+
+        return response()->json(['data' => $conversations->map(fn (WhatsAppConversation $c) => self::conversationData($c, $crm))->values()]);
     }
 
     /** Conversa (as últimas 100 mensagens); abrir marca como lida. */
@@ -97,11 +100,12 @@ class WhatsAppChatController extends Controller
 
     private function conversationResponse(WhatsAppConversation $conversation): JsonResponse
     {
-        $conversation->load(['client:id,name,phone_number', 'lead:id,name,phone_number', 'number:id,name,status']);
+        $conversation->load(['client:id,name,phone_number,city_id', 'client.city:id,name', 'lead:id,name,phone_number,city_id,stage', 'lead.city:id,name', 'number:id,name,status']);
+        $crm = self::latestCrm(array_filter([$conversation->client_id]));
         $messages = $conversation->messages()->with('user:id,name')->latest('id')->limit(100)->get()->reverse()->values();
 
         return response()->json(['data' => [
-            ...self::conversationData($conversation),
+            ...self::conversationData($conversation, $crm),
             'messages' => $messages->map(fn (WhatsAppMessage $m) => [
                 'id' => $m->id,
                 'direction' => $m->direction,
@@ -116,10 +120,30 @@ class WhatsAppChatController extends Controller
         ]]);
     }
 
-    /** @return array<string, mixed> */
-    private static function conversationData(WhatsAppConversation $c): array
+    /**
+     * Etapa atual de cada cliente no CRM: a do atendimento mais recente em que ele foi trabalhado.
+     *
+     * @param  array<int, int>  $clientIds
+     * @return array<int, CrmEntry>
+     */
+    private static function latestCrm(array $clientIds): array
+    {
+        if (! $clientIds) {
+            return [];
+        }
+
+        return CrmEntry::query()->with('cityVisit.city:id,name')->whereIn('client_id', $clientIds)
+            ->orderByDesc('updated_at')->orderByDesc('id')->get()->unique('client_id')->keyBy('client_id')->all();
+    }
+
+    /**
+     * @param  array<int, CrmEntry>  $crm
+     * @return array<string, mixed>
+     */
+    private static function conversationData(WhatsAppConversation $c, array $crm = []): array
     {
         $person = $c->client ?? $c->lead;
+        $entry = $c->client_id ? ($crm[$c->client_id] ?? null) : null;
 
         return [
             'id' => $c->id,
@@ -129,6 +153,15 @@ class WhatsAppChatController extends Controller
             'lead_id' => $c->lead_id,
             // Sigilo: o mascarado para todos; o número só para o admin, e só de quem está cadastrado.
             'phone_masked' => $person ? PhonePrivacy::mask($person->phone_number) : null,
+            // Cidade da pessoa e a situação atual: no CRM (cliente) ou a etapa da indicação (12/11/2026).
+            'city' => $person?->city?->name,
+            'crm' => $c->client_id ? [
+                'stage' => $entry?->stage->value ?? 'to_contact',
+                'stage_label' => $entry?->stage->label() ?? 'A contatar',
+                'visit_id' => $entry?->city_visit_id,
+                'visit' => $entry?->cityVisit ? trim(($entry->cityVisit->city?->name ?? '').' · '.$entry->cityVisit->visit_date->format('d/m')) : null,
+            ] : null,
+            'lead_stage_label' => $c->lead && ! $c->client_id ? $c->lead->stage?->label() : null,
             'number' => $c->number?->only(['id', 'name']),
             'unread_count' => $c->unread_count,
             'last_message_at' => $c->last_message_at?->toIso8601String(),

@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\City;
 use App\Models\CityVisit;
 use App\Models\Client;
+use App\Models\CrmEntry;
 use App\Models\MessageTemplate;
 use App\Models\User;
 use App\Models\WhatsAppConversation;
@@ -117,7 +118,12 @@ class WhatsAppTest extends TestCase
 
         Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
         $this->getJson('/api/admin/whatsapp/conversations')->assertJsonPath('data.0.name', 'Nayara Lima')->assertJsonPath('data.0.unread_count', 1)
-            ->assertJsonPath('data.0.last_message_preview', 'Oi, quero marcar');
+            ->assertJsonPath('data.0.last_message_preview', 'Oi, quero marcar')
+            ->assertJsonPath('data.0.city', 'Assaré')->assertJsonPath('data.0.crm.stage', 'to_contact');
+        // Situação atual no CRM: a do atendimento mais recente em que foi trabalhado.
+        $visit = CityVisit::factory()->create(['city_id' => $this->client->city_id]);
+        CrmEntry::create(['city_visit_id' => $visit->id, 'client_id' => $this->client->id, 'stage' => 'booked']);
+        $this->getJson('/api/admin/whatsapp/conversations')->assertJsonPath('data.0.crm.stage_label', 'Marcou')->assertJsonPath('data.0.crm.visit_id', $visit->id);
         $this->getJson("/api/admin/whatsapp/conversations/{$conversation->id}")->assertJsonPath('data.messages.0.direction', 'in');
         $this->assertSame(0, $conversation->fresh()->unread_count);
 

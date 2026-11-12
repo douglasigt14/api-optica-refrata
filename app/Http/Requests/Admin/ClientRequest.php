@@ -11,7 +11,8 @@ use Illuminate\Validation\Rule;
 
 /**
  * Cliente da ótica (também o paciente dos pedidos ao laboratório): nome, telefone e cidade (uma das atendidas)
- * e data de nascimento obrigatórios (12/11/2026; a idade sai dela); se já usa óculos, comorbidades e como conheceu a ótica opcionais.
+ * e data de nascimento obrigatórios (12/11/2026; a idade sai dela); se já usa óculos, comorbidades, como conheceu a ótica,
+ * última compra (data e valor), quem indicou e observações opcionais.
  * Clientes antigos, sem a data, só precisam dela quando o cadastro for editado.
  */
 class ClientRequest extends FormRequest
@@ -36,6 +37,11 @@ class ClientRequest extends FormRequest
             'comorbidities.*' => ['array'],
             'comorbidities.*.*' => ['string', Rule::in(Client::COMORBIDITY_WHO)],
             'referral_source' => ['nullable', 'string', Rule::in(Client::REFERRAL_SOURCES)],
+            // Opcionais (12/11/2026): última compra, quem indicou (nome livre) e observações.
+            'last_purchase_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'last_purchase_amount' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
+            'referred_by' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:5000'],
         ];
     }
 
@@ -53,6 +59,8 @@ class ClientRequest extends FormRequest
             'city_id.exists' => 'Escolha uma cidade atendida pela ótica.',
             'birth_date.required' => 'Informe a data de nascimento.',
             'birth_date.before' => 'A data de nascimento precisa ser antes de hoje.',
+            'last_purchase_date.before_or_equal' => 'A data da última compra não pode ser depois de hoje.',
+            'last_purchase_amount.numeric' => 'Valor da última compra inválido.',
         ];
     }
 

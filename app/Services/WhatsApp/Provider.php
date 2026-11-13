@@ -27,4 +27,7 @@ interface Provider
 
     /** Áudio de voz (o arquivo em base64). @return string|null id da mensagem */
     public function sendAudio(string $number, string $base64): ?string;
+
+    /** Nome do grupo ("…@g.us"); null se não der para saber. */
+    public function groupName(string $groupJid): ?string;
 }

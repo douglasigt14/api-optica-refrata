@@ -87,6 +87,13 @@ class EvolutionProvider implements Provider
         return $data['key']['id'] ?? null;
     }
 
+    public function groupName(string $groupJid): ?string
+    {
+        $data = $this->call(fn () => $this->http()->get("/group/findGroupInfos/{$this->number->instance}", ['groupJid' => $groupJid]), ignoreErrors: true);
+
+        return $data['subject'] ?? null;
+    }
+
     /**
      * @param  callable(): Response  $request
      * @return array<string, mixed>

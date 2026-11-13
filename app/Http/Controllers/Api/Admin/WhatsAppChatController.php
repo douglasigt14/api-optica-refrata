@@ -15,7 +15,10 @@ use App\Support\CurrentCompany;
 use App\Support\PhonePrivacy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -30,12 +33,13 @@ class WhatsAppChatController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate(['unread' => ['nullable', 'boolean'], 'search' => ['nullable', 'string', 'max:100']]);
-        $conversations = WhatsAppConversation::query()->with(['client:id,name,phone_number,city_id', 'client.city:id,name', 'lead:id,name,phone_number,city_id,stage', 'lead.city:id,name', 'number:id,name'])
+        $conversations = WhatsAppConversation::query()->with(['client:id,name,phone_number,city_id', 'client.city:id,name', 'lead:id,name,phone_number,city_id,stage', 'lead.city:id,name', 'prospector:id,name,phone_number,city_id', 'prospector.city:id,name', 'number:id,name'])
             ->whereNotNull('last_message_at')
             ->when($filters['unread'] ?? false, fn ($q) => $q->where('unread_count', '>', 0))
             ->when(trim($filters['search'] ?? ''), fn ($q, $s) => $q->where(fn ($q) => $q->where('push_name', 'like', "%{$s}%")
                 ->orWhereHas('client', fn ($q) => $q->where('name', 'like', "%{$s}%"))
-                ->orWhereHas('lead', fn ($q) => $q->where('name', 'like', "%{$s}%"))))
+                ->orWhereHas('lead', fn ($q) => $q->where('name', 'like', "%{$s}%"))
+                ->orWhereHas('prospector', fn ($q) => $q->where('name', 'like', "%{$s}%"))))
             ->orderByRaw('unread_count > 0 DESC')->orderByDesc('last_message_at')->limit(100)->get();
 
         $crm = self::latestCrm($conversations->pluck('client_id')->filter()->unique()->all());
@@ -90,6 +94,43 @@ class WhatsAppChatController extends Controller
         return $this->conversationResponse($conversation->fresh());
     }
 
+    /**
+     * Cadastra pela conversa (13/11/2026): a pessoa sem cadastro ou, num grupo, quem mandou a mensagem `message_id`,
+     * como **cliente** (nome, cidade; nascimento e observações opcionais) ou **parceiro** (como na tela Parceiros: nome,
+     * nascimento, cidade, PIX e senha; o telefone é o login). O telefone sai do WhatsApp, no servidor, sem passar pela tela.
+     */
+    public function register(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $kind = $request->validate(['kind' => ['required', Rule::in(['client', 'partner'])]], ['kind.required' => 'Escolha cliente ou parceiro.'])['kind'];
+        $data = $request->validate([
+            'message_id' => ['nullable', 'integer'],
+            'name' => ['required', 'string', 'max:120'],
+            'city_id' => ['required', 'integer', CurrentCompany::servedCity()],
+            ...($kind === 'client' ? [
+                'birth_date' => ['nullable', 'date', 'before:today'],
+                'notes' => ['nullable', 'string', 'max:5000'],
+            ] : [
+                'birth_date' => ['required', 'date', 'before:-18 years'],
+                'pix_key' => ['required', 'string', 'max:255'],
+                'instagram_handle' => ['nullable', 'string', 'max:30'],
+                'password' => ['required', 'string', Password::min(8)],
+            ]),
+        ], [
+            'name.required' => 'Informe o nome.',
+            'city_id.required' => 'Escolha a cidade.',
+            'city_id.exists' => 'Escolha uma cidade atendida pela ótica.',
+            'birth_date.required' => 'Informe a data de nascimento.',
+            'birth_date.before' => $kind === 'client' ? 'A data de nascimento precisa ser antes de hoje.' : 'O parceiro precisa ter 18 anos ou mais.',
+            'pix_key.required' => 'Informe a chave PIX.',
+            'password.required' => 'Crie a senha do parceiro.',
+            'password.min' => 'A senha precisa de 8 caracteres ou mais.',
+        ]);
+        $from = ! empty($data['message_id']) ? $conversation->messages()->whereKey($data['message_id'])->firstOrFail() : null;
+        $person = $this->inbox->register($conversation, $from, $kind, Arr::except($data, ['message_id']));
+
+        return response()->json(['data' => ['kind' => $kind, 'id' => $person->id, 'name' => $person->name]], 201);
+    }
+
     /** O arquivo do áudio ou da imagem da mensagem. */
     public function media(WhatsAppMessage $message): StreamedResponse
     {
@@ -100,9 +141,11 @@ class WhatsAppChatController extends Controller
 
     private function conversationResponse(WhatsAppConversation $conversation): JsonResponse
     {
-        $conversation->load(['client:id,name,phone_number,city_id', 'client.city:id,name', 'lead:id,name,phone_number,city_id,stage', 'lead.city:id,name', 'number:id,name,status']);
+        $conversation->load(['client:id,name,phone_number,city_id', 'client.city:id,name', 'lead:id,name,phone_number,city_id,stage', 'lead.city:id,name', 'prospector:id,name,phone_number,city_id', 'prospector.city:id,name', 'number:id,name,status']);
         $crm = self::latestCrm(array_filter([$conversation->client_id]));
         $messages = $conversation->messages()->with('user:id,name')->latest('id')->limit(100)->get()->reverse()->values();
+        // Grupo: quem escreveu já é cliente ou parceiro? (o botão Cadastrar só aparece para quem não é).
+        $registered = $conversation->is_group ? $this->inbox->registeredSenders($messages) : [];
 
         return response()->json(['data' => [
             ...self::conversationData($conversation, $crm),
@@ -115,6 +158,9 @@ class WhatsAppChatController extends Controller
                 'status' => $m->status,
                 'error' => $m->error,
                 'user' => $m->user?->only(['id', 'name']),
+                'sender_name' => $m->sender_name,
+                'sender_registered' => $registered[$m->id] ?? null,
+                'can_register_sender' => $conversation->is_group && $m->sender_jid !== null && ! isset($registered[$m->id]),
                 'created_at' => $m->created_at?->toIso8601String(),
             ]),
         ]]);
@@ -142,15 +188,17 @@ class WhatsAppChatController extends Controller
      */
     private static function conversationData(WhatsAppConversation $c, array $crm = []): array
     {
-        $person = $c->client ?? $c->lead;
+        $person = $c->client ?? $c->lead ?? $c->prospector;
         $entry = $c->client_id ? ($crm[$c->client_id] ?? null) : null;
 
         return [
             'id' => $c->id,
-            'name' => $person?->name ?? $c->push_name ?? 'Contato sem cadastro',
+            'name' => $person?->name ?? $c->push_name ?? ($c->is_group ? 'Grupo' : 'Contato sem cadastro'),
+            'is_group' => $c->is_group,
             'push_name' => $c->push_name,
             'client_id' => $c->client_id,
             'lead_id' => $c->lead_id,
+            'prospector_id' => $c->prospector_id,
             // Sigilo: o mascarado para todos; o número só para o admin, e só de quem está cadastrado.
             'phone_masked' => $person ? PhonePrivacy::mask($person->phone_number) : null,
             // Cidade da pessoa e a situação atual: no CRM (cliente) ou a etapa da indicação (12/11/2026).

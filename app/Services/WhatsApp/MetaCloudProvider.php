@@ -47,4 +47,10 @@ class MetaCloudProvider implements Provider
     {
         $this->notYet();
     }
+
+    /** A API oficial não entra em grupos. */
+    public function groupName(string $groupJid): ?string
+    {
+        return null;
+    }
 }

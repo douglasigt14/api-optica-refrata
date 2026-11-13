@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * fica criptografado e nunca sai na API; `remote_hash` serve para achar a conversa. Ligada ao cliente ou à indicação
  * quando o número bate.
  */
-#[Fillable(['whatsapp_number_id', 'client_id', 'lead_id', 'remote_jid', 'remote_hash', 'push_name', 'unread_count', 'last_message_at', 'last_message_preview'])]
+#[Fillable(['whatsapp_number_id', 'client_id', 'lead_id', 'prospector_id', 'remote_jid', 'remote_hash', 'push_name', 'is_group', 'unread_count', 'last_message_at', 'last_message_preview'])]
 #[Hidden(['remote_jid', 'remote_hash'])]
 class WhatsAppConversation extends Model
 {
@@ -24,12 +24,18 @@ class WhatsAppConversation extends Model
 
     protected function casts(): array
     {
-        return ['remote_jid' => 'encrypted', 'last_message_at' => 'datetime'];
+        return ['remote_jid' => 'encrypted', 'is_group' => 'boolean', 'last_message_at' => 'datetime'];
     }
 
     public static function hashFor(int $numberId, string $jid): string
     {
         return hash('sha256', $numberId.'|'.$jid);
+    }
+
+    /** Para quem enviar: o grupo vai pelo identificador inteiro ("…@g.us"); a pessoa, só pelos dígitos do número. */
+    public function recipient(): string
+    {
+        return $this->is_group ? $this->remote_jid : $this->remoteDigits();
     }
 
     /** Só os dígitos do número da pessoa (para enviar). */
@@ -48,6 +54,12 @@ class WhatsAppConversation extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    /** @return BelongsTo<Prospector, $this> */
+    public function prospector(): BelongsTo
+    {
+        return $this->belongsTo(Prospector::class);
     }
 
     /** @return BelongsTo<Lead, $this> */

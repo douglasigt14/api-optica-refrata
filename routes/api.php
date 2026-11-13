@@ -122,6 +122,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/whatsapp/conversations/{conversation}', [Admin\WhatsAppChatController::class, 'show'])->whereNumber('conversation')->name('whatsapp.conversations.show');
             Route::post('/whatsapp/conversations/{conversation}/messages', [Admin\WhatsAppChatController::class, 'send'])->whereNumber('conversation')->name('whatsapp.conversations.send');
             Route::post('/whatsapp/conversations/{conversation}/audio', [Admin\WhatsAppChatController::class, 'audio'])->whereNumber('conversation')->name('whatsapp.conversations.audio');
+            Route::post('/whatsapp/conversations/{conversation}/register', [Admin\WhatsAppChatController::class, 'register'])->whereNumber('conversation')->name('whatsapp.conversations.register');
             Route::get('/whatsapp/messages/{message}/media', [Admin\WhatsAppChatController::class, 'media'])->name('whatsapp.messages.media');
             Route::get('/message-templates', [Admin\MessageTemplateController::class, 'index'])->name('message-templates.index');
             // Ligar pelo WhatsApp (12/11/2026): o link com o número sai só no clique, e fica registrado.

@@ -262,7 +262,8 @@ class SaleController extends Controller
 
     /**
      * "Lançar venda": registra a entrada (uma ou mais formas; pode vir vazia, se não pagou nada agora) e gera o título a
-     * receber no Financeiro. Precisa de pelo menos um óculos com valor e do cliente com CPF e telefone.
+     * receber no Financeiro. Precisa de pelo menos um óculos com valor e do cliente com telefone
+     * (o CPF não trava desde 14/11/2026: tem cliente que vem com outro documento).
      */
     public function launch(Request $request, Sale $sale): SaleResource
     {
@@ -277,8 +278,8 @@ class SaleController extends Controller
         if ($sale->activeOrders()->contains(fn (LabOrder $order) => (float) $order->price <= 0)) {
             throw ValidationException::withMessages(['orders' => 'Informe o valor de todos os óculos.']);
         }
-        if (! $sale->client->cpf || ! $sale->client->phone_number) {
-            throw ValidationException::withMessages(['client_id' => 'Complete o cadastro do cliente que paga: CPF e telefone.']);
+        if (! $sale->client->phone_number) {
+            throw ValidationException::withMessages(['client_id' => 'Complete o cadastro do cliente que paga: telefone.']);
         }
         if (collect($lines)->sum(fn ($line) => $this->cents($line['amount'])) > $sale->totalCents()) {
             throw ValidationException::withMessages(['payments' => 'A entrada passa do valor da ficha.']);

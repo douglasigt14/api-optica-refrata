@@ -79,7 +79,7 @@ class Financial
             'amount' => number_format($sale->totalCents() / 100, 2, '.', ''),
             'customer' => [
                 'name' => $sale->client->name,
-                'document' => (string) $sale->client->cpf,
+                'document' => $sale->client->cpf ?: null,
                 'phone' => $sale->client->phone_number,
                 'address' => $sale->client->address,
             ],

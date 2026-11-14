@@ -347,6 +347,22 @@ class SaleTest extends TestCase
         $this->postJson("/api/admin/sales/{$sale}/payments", ['method' => 'cash', 'amount' => 1])->assertJsonValidationErrors(['sale_id']);
     }
 
+    /**
+     * Cliente que paga sem CPF (14/11/2026: pode vir com outro documento): a ficha lança e vai ao Financeiro sem documento.
+     */
+    public function test_a_payer_without_cpf_launches_the_sale(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
+        $this->company->update(['sale_accounts' => ['cash' => 1, 'pix' => 2, 'card' => 2]]);
+        $this->mother->update(['cpf' => null]);
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 500))->assertCreated();
+
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'cash', 'amount' => 100]]])->assertOk();
+        $this->assertNull($this->financial[0]['body']['customer']['document']);
+        $this->assertSame('Luiza da Silva Sousa', $this->financial[0]['body']['customer']['name']);
+    }
+
     public function test_store_sale_rules_and_cancel(): void
     {
         Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
@@ -361,9 +377,9 @@ class SaleTest extends TestCase
         $this->getJson("/api/admin/sales?search={$number}")->assertJsonPath('data.0.id', $sale);
         $this->getJson('/api/admin/sales?search=ninguem')->assertJsonCount(0, 'data');
 
-        // Cliente que paga sem CPF não lança.
+        // Cliente que paga sem telefone não lança (sem CPF lança: 14/11/2026).
         $this->patchJson("/api/admin/sales/{$sale}", ['client_id' => $this->child->id, 'expected_delivery_date' => today()->addDays(10)->toDateString()])->assertOk();
-        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => []])->assertJsonValidationErrors(['client_id' => 'CPF e telefone']);
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => []])->assertJsonValidationErrors(['client_id' => 'telefone']);
         $this->patchJson("/api/admin/sales/{$sale}", ['client_id' => $this->mother->id, 'expected_delivery_date' => today()->addDays(10)->toDateString()])->assertOk();
         // Quitou tudo na hora: lança sem restante.
         $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'cash', 'amount' => 450]]])->assertOk()->assertJsonPath('data.remaining', '0.00');

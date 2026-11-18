@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\LabOrderPayload;
 use App\Models\Concerns\BelongsToCompany;
 use App\Support\CrmAuto;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -47,7 +48,8 @@ class LabOrder extends Model
     {
         return [
             'number' => 'integer',
-            'payload' => 'array',
+            // Tipos certos mesmo vindo de multipart (18/11/2026): chaves em booleano, tratamentos e medidas em número.
+            'payload' => LabOrderPayload::class,
             'sent_at' => 'datetime',
             'status_at' => 'datetime',
             'awaits_frame' => 'boolean',

@@ -63,6 +63,11 @@ class SaleResource extends JsonResource
                     'refractive_index' => $order->payload['refractive_index'] ?? null,
                 ],
                 'awaits_frame' => $order->awaits_frame,
+                // Etiquetas de conferência na lista do atendimento (18/11/2026): a foto da receita anexada e as 4
+                // medidas da armação preenchidas (sem "medir no laboratório").
+                'has_prescription' => $order->prescription_path !== null,
+                'has_frame_measures' => empty($order->payload['measure_frame_in_lab'])
+                    && collect(['frame_a', 'frame_bridge', 'frame_ed', 'frame_b'])->every(fn (string $key) => filled($order->payload[$key] ?? null)),
                 'created_at' => $order->created_at?->toIso8601String(),
             ])->values(),
             'payments' => $this->payments->map(fn (SalePayment $payment) => [

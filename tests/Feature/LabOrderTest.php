@@ -175,6 +175,33 @@ class LabOrderTest extends TestCase
         $this->assertModelExists($withOrder);
     }
 
+    /**
+     * Multipart (salvar com anexo e editar) manda tudo como texto (18/11/2026): o pedido volta com as chaves em booleano
+     * ("0" não é ligado), os tratamentos e as medidas em número (o id bate com o do catálogo).
+     */
+    public function test_a_multipart_order_comes_back_with_booleans_and_numbers(): void
+    {
+        Storage::fake('local');
+        $this->link();
+        $client = Client::create(['name' => 'Maria Souza', 'phone_number' => '88999990000', 'city_id' => $this->city->id]);
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+
+        $payload = $this->post('/api/admin/lab-orders', [
+            ...$this->order($client, ['measure_frame_in_lab' => '0', 'standard_measures' => '0', 'plus_cylinder' => '0', 'treatment_ids' => ['15', '16']]),
+            'frame_a' => '52', 'frame_bridge' => '18', 'frame_ed' => '55.5', 'frame_b' => '40',
+            'eyes' => [['eye' => 'right', 'sphere' => '-2', 'cylinder' => '-0.5', 'axis' => '90', 'dnp' => '31']],
+            'prescription' => UploadedFile::fake()->image('receita.jpg'),
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data.payload');
+
+        $this->assertFalse($payload['measure_frame_in_lab']);
+        $this->assertFalse($payload['standard_measures']);
+        $this->assertFalse($payload['plus_cylinder']);
+        $this->assertSame([15, 16], $payload['treatment_ids']);
+        $this->assertSame(55.5, $payload['frame_ed']);
+        $this->assertSame(-2, $payload['eyes'][0]['sphere']);
+        $this->assertSame(90, $payload['eyes'][0]['axis']);
+    }
+
     public function test_order_is_saved_pending_then_sent_and_the_status_comes_back(): void
     {
         Storage::fake('local');

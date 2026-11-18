@@ -12,7 +12,9 @@ use App\Models\PlatformAccess;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Passport\Passport;
 use Tests\TestCase;
 
@@ -294,7 +296,9 @@ class SaleTest extends TestCase
         // Na lista (tela do atendimento, vendas em acordeão): os óculos com o laboratório e a OS de Ótica; até 100 por página.
         $this->getJson('/api/admin/sales?per_page=100')->assertOk()->assertJsonPath('meta.per_page', 100)
             ->assertJsonPath('data.0.orders.0.number', 1)->assertJsonPath('data.0.orders.0.lab.name', fn ($name) => filled($name))
-            ->assertJsonPath('data.0.orders.0.lens.lens_type', fn ($type) => filled($type));
+            ->assertJsonPath('data.0.orders.0.lens.lens_type', fn ($type) => filled($type))
+            // Etiquetas de conferência: sem foto da receita e com "medir no laboratório" (sem as medidas da armação).
+            ->assertJsonPath('data.0.orders.0.has_prescription', false)->assertJsonPath('data.0.orders.0.has_frame_measures', false);
         $this->getJson('/api/admin/sales?per_page=101')->assertJsonValidationErrors(['per_page']);
         // Rascunho: nada vai ao Financeiro, e os óculos não vão ao laboratório.
         $this->assertSame([], $this->financial);
@@ -350,6 +354,26 @@ class SaleTest extends TestCase
     /**
      * Cliente que paga sem CPF (14/11/2026: pode vir com outro documento): a ficha lança e vai ao Financeiro sem documento.
      */
+    /** Etiquetas de conferência (18/11/2026): a ficha diz, por óculos, se já tem a foto da receita e as medidas da armação. */
+    public function test_each_glasses_tells_if_it_has_the_prescription_photo_and_the_frame_measures(): void
+    {
+        Storage::fake('local');
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $sale = $this->newSale();
+
+        $bare = $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 300))->assertCreated()->json('data.id');
+        $done = $this->post('/api/admin/lab-orders', $this->glasses($sale, $this->child, 300, [
+            'measure_frame_in_lab' => false, 'frame_a' => 52, 'frame_bridge' => 18, 'frame_ed' => 55, 'frame_b' => 40,
+            'prescription' => UploadedFile::fake()->image('receita.jpg'),
+        ]), ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+
+        $orders = collect($this->getJson("/api/admin/sales/{$sale}")->assertOk()->json('data.orders'))->keyBy('id');
+        $this->assertFalse($orders[$bare]['has_prescription']);
+        $this->assertFalse($orders[$bare]['has_frame_measures']);
+        $this->assertTrue($orders[$done]['has_prescription']);
+        $this->assertTrue($orders[$done]['has_frame_measures']);
+    }
+
     public function test_a_payer_without_cpf_launches_the_sale(): void
     {
         Passport::actingAs(User::factory()->team(UserRole::Admin)->create());

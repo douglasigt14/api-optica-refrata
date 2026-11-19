@@ -78,6 +78,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::middleware('role:admin,field_agent')->group(function () {
             Route::get('/dashboard', Admin\DashboardController::class)->name('dashboard');
+            // Dashboard de pedidos (19/11/2026): óculos, fichas e clientes, sem valores em R$.
+            Route::get('/dashboard/orders', Admin\OrdersDashboardController::class)->name('dashboard.orders');
             // Configurações da ótica: o atendente lê (a logo sai no cupom que ele imprime).
             Route::get('/settings', [Admin\SettingsController::class, 'show'])->name('settings.show');
 
@@ -172,6 +174,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         });
 
         Route::middleware('role:admin')->group(function () {
+            // Parte financeira do Dashboard (19/11/2026): só o admin recebe os valores.
+            Route::get('/dashboard/financial', Admin\FinancialDashboardController::class)->name('dashboard.financial');
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
             // Configurações ▸ WhatsApp (CRM, 12/11/2026): números (QR Code), modelos de mensagem e disparo (só com a API oficial).
             Route::get('/whatsapp/numbers', [Admin\WhatsAppNumberController::class, 'index'])->name('whatsapp.numbers.index');

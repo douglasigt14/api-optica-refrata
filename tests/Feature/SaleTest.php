@@ -300,10 +300,8 @@ class SaleTest extends TestCase
             // Etiquetas de conferência: sem foto da receita e com "medir no laboratório" (sem as medidas da armação).
             ->assertJsonPath('data.0.orders.0.has_prescription', false)->assertJsonPath('data.0.orders.0.has_frame_measures', false);
         $this->getJson('/api/admin/sales?per_page=101')->assertJsonValidationErrors(['per_page']);
-        // Rascunho: nada vai ao Financeiro, e os óculos não vão ao laboratório.
+        // Rascunho: nada vai ao Financeiro.
         $this->assertSame([], $this->financial);
-        $this->postJson("/api/admin/lab-order-visits/{$this->visit->id}/send")->assertOk()->assertJsonPath('data.sent', 0)
-            ->assertJsonPath('data.results.0.error', fn ($error) => str_contains($error, 'Ficha ainda não lançada'));
 
         // Lançar: precisa das contas do Financeiro para as formas usadas (só o admin configura).
         $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200], ['method' => 'card', 'amount' => 400, 'installments' => 6]]])
@@ -372,6 +370,21 @@ class SaleTest extends TestCase
         $this->assertFalse($orders[$bare]['has_frame_measures']);
         $this->assertTrue($orders[$done]['has_prescription']);
         $this->assertTrue($orders[$done]['has_frame_measures']);
+    }
+
+    /** Óculos de ficha ainda não lançada vai ao laboratório (18/11/2026); a ficha se lança depois, com a entrada. */
+    public function test_glasses_of_a_draft_sale_go_to_the_lab_and_the_sale_is_launched_later(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
+        $this->putJson('/api/admin/sale-settings', ['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]])->assertOk();
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 500))->assertCreated();
+
+        $this->postJson("/api/admin/lab-order-visits/{$this->visit->id}/send")->assertOk()->assertJsonPath('data.sent', 1);
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.status', 'draft')->assertJsonPath('data.orders.0.sent', true);
+
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200]]])
+            ->assertOk()->assertJsonPath('data.status', 'launched')->assertJsonPath('data.paid', '200.00');
     }
 
     public function test_a_payer_without_cpf_launches_the_sale(): void

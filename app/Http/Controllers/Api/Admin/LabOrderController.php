@@ -288,13 +288,7 @@ class LabOrderController extends Controller
      */
     private function trySend(LabOrder $order): ?string
     {
-        // Óculos de venda vai ao laboratório só com a venda lançada (cliente que paga e entrada; 07/11/2026).
-        if ($order->sale_id && ! Sale::whereKey($order->sale_id)->whereNotNull('launched_at')->exists()) {
-            $message = 'Ficha ainda não lançada: lance a ficha (com a entrada) antes de enviar.';
-            $order->update(['send_error' => $message]);
-
-            return $message;
-        }
+        // Óculos de ficha ainda não lançada também vai (18/11/2026): a entrada já foi paga, só não foi lançada; lança-se depois.
         try {
             $this->laboratory->send($order);
 

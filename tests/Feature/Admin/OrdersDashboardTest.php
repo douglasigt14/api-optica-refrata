@@ -120,13 +120,11 @@ class OrdersDashboardTest extends TestCase
             ->assertJsonPath('data.prescription_types', ['myopia' => 1, 'hyperopia' => 1, 'astigmatism' => 1, 'presbyopia' => 1])
             ->assertJsonPath('data.treatments.0', ['lab_connection_id' => $this->lab->id, 'treatment_id' => 7, 'total' => 2])
             ->assertJsonPath('data.frame_colors.0', ['value' => 'Preto', 'total' => 2])
-            ->assertJsonPath('data.weekdays.0', ['weekday' => 1, 'total' => 2])
-            ->assertJsonPath('data.weekdays.1', ['weekday' => 2, 'total' => 2])
-            ->assertJsonPath('data.ranking_users.0.user.name', 'Romana')
-            ->assertJsonPath('data.ranking_users.0.glasses', 4)
             ->assertJsonPath('data.ranking_cities.0.city.name', 'Assaré')
             ->assertJsonPath('data.ranking_cities.0.clients', 3)
-            ->assertJsonCount(4, 'data.latest_orders');
+            ->assertJsonMissingPath('data.ranking_users')
+            ->assertJsonMissingPath('data.latest_orders')
+            ->assertJsonMissingPath('data.weekdays');
 
         // Pessoas que compraram: Luiza (instagram) e João (parceiro); faixas: Pedro 0-12, Luiza 40-49, João 60+.
         $sources = collect($response->json('data.referral_sources'))->pluck('total', 'value');
@@ -182,8 +180,7 @@ class OrdersDashboardTest extends TestCase
                 ['method' => 'card', 'label' => 'Cartão', 'amount' => '100.00'],
             ])
             ->assertJsonPath('data.payment_stages', [['stage' => 'down', 'amount' => '300.00'], ['stage' => 'delivery', 'amount' => '400.00']])
-            ->assertJsonPath('data.ranking_users.0.user.name', 'Romana')
-            ->assertJsonPath('data.ranking_users.0.total', '1200.00');
+            ->assertJsonMissingPath('data.ranking_users');
     }
 
     public function test_factory_cannot_see_the_dashboards(): void

@@ -19,15 +19,13 @@ use Illuminate\Support\Collection;
  */
 class FinancialDashboardController extends Controller
 {
-    private const TOP = 10;
-
     public function __construct(private readonly Financial $financial) {}
 
     public function __invoke(Request $request): JsonResponse
     {
         $scope = DashboardScope::fromRequest($request);
         $orders = $scope->orders()->get(['id', 'sale_id']);
-        $sales = DashboardScope::salesOf($orders)->load(['user:id,name', 'cityVisit.city']);
+        $sales = DashboardScope::salesOf($orders)->load('cityVisit.city');
         // Baixas feitas no Financeiro entram antes de somar (como no relatório; fora do ar, segue com o que tem).
         if ($this->financial->pull($sales)) {
             $sales->each->load('payments');
@@ -55,14 +53,6 @@ class FinancialDashboardController extends Controller
                 'amount' => $this->money($cents),
             ])->values(),
             'payment_stages' => collect($stages)->map(fn (int $cents, string $stage) => ['stage' => $stage, 'amount' => $this->money($cents)])->values(),
-            'ranking_users' => $sales->groupBy(fn (Sale $sale) => (string) $sale->user_id)
-                ->map(fn (Collection $group) => [
-                    'user' => $group->first()->user ? ['id' => $group->first()->user->id, 'name' => $group->first()->user->name] : null,
-                    ...$this->sums($group),
-                ])
-                ->sortByDesc(fn (array $row) => (float) $row['total'])
-                ->take(self::TOP)
-                ->values(),
         ]]);
     }
 

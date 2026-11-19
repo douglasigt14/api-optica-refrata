@@ -26,10 +26,9 @@ class OrdersDashboardController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $scope = DashboardScope::fromRequest($request);
-        $timezone = config('app.business_timezone');
 
         $orders = $scope->orders()
-            ->with(['client', 'cityVisit.city', 'user:id,name', 'sale:id,client_id,user_id,delivered_at,canceled_at', 'sale.client'])
+            ->with(['client', 'cityVisit.city', 'sale:id,client_id,user_id,delivered_at,canceled_at', 'sale.client'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get();
@@ -74,20 +73,6 @@ class OrdersDashboardController extends Controller
             'prescription_types' => $this->prescriptionTypes($orders),
             'referral_sources' => $this->count($this->people($orders)->map(fn (Client $client) => $client->referral_source)),
             'age_ranges' => $this->ageRanges($orders->pluck('client')->filter()->unique('id')),
-            // Segunda a domingo (1 = segunda), pelo dia em que o óculos foi lançado.
-            'weekdays' => collect(range(1, 7))
-                ->map(fn (int $day) => ['weekday' => $day, 'total' => $orders->filter(fn (LabOrder $order) => $order->created_at->copy()->setTimezone($timezone)->dayOfWeekIso === $day)->count()])
-                ->values(),
-            'ranking_users' => $orders
-                ->groupBy(fn (LabOrder $order) => (string) $order->user_id)
-                ->map(fn (Collection $group) => [
-                    'user' => $group->first()->user ? ['id' => $group->first()->user->id, 'name' => $group->first()->user->name] : null,
-                    'glasses' => $group->count(),
-                    'sales' => $sold($group),
-                ])
-                ->sortByDesc('glasses')
-                ->take(self::TOP)
-                ->values(),
             'ranking_cities' => $orders
                 ->filter(fn (LabOrder $order) => $order->cityVisit?->city)
                 ->groupBy(fn (LabOrder $order) => $order->cityVisit->city_id)
@@ -114,18 +99,6 @@ class OrdersDashboardController extends Controller
                 ->values(),
             'frame_colors' => $this->top($orders->map(fn (LabOrder $order) => $order->payload['frame_color'] ?? null)),
             'frame_brands' => $this->top($orders->map(fn (LabOrder $order) => $order->payload['frame_brand'] ?? null)),
-            'latest_orders' => $orders->take(self::TOP)->map(fn (LabOrder $order) => [
-                'id' => $order->id,
-                'number' => $order->number,
-                'client' => $order->client ? ['id' => $order->client->id, 'name' => $order->client->name] : null,
-                'visit' => $order->cityVisit ? ['id' => $order->cityVisit->id, 'title' => $order->cityVisit->title, 'city' => $order->cityVisit->city?->name] : null,
-                'lens_type' => $order->payload['lens_type'] ?? null,
-                'status' => $order->status,
-                'status_label' => $order->status_label,
-                'pending' => $order->sent_at === null,
-                'stage' => $this->bucket($order),
-                'created_at' => $order->created_at,
-            ])->values(),
         ]]);
     }
 

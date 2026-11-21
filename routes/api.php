@@ -166,6 +166,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/lab-order-visits/{cityVisit}/tickets/call-next', [Admin\QueueTicketController::class, 'callNext'])->name('lab-order-visits.tickets.call-next');
             Route::post('/lab-order-visits/{cityVisit}/tickets/{ticket}/call', [Admin\QueueTicketController::class, 'call'])->whereNumber('ticket')->name('lab-order-visits.tickets.call');
             Route::get('/lab-order-visits/{cityVisit}/sales-report', [Admin\SaleController::class, 'visitReport'])->name('lab-order-visits.sales-report');
+            // Notificação de entregas (21/11/2026): avisar os clientes do atendimento, com o parecer e quem já foi avisado.
+            Route::get('/lab-order-visits/{cityVisit}/delivery-notices', [Admin\DeliveryNoticeController::class, 'index'])->name('lab-order-visits.delivery-notices');
+            Route::put('/sales/{sale}/delivery-notice', [Admin\DeliveryNoticeController::class, 'update'])->name('sales.delivery-notice');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
             Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');

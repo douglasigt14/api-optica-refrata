@@ -429,4 +429,38 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.orders.0.status', 'canceled')->assertJsonPath('data.total', '0.00');
         $this->assertSame("/api/integrations/optica/sales/{$sale}/cancel", $this->financial[0]['url']);
     }
+
+    /** Notificação de entregas (21/11/2026): os clientes das fichas lançadas, o parecer e quem já foi avisado. */
+    public function test_delivery_notices_list_launched_sales_and_mark_who_was_told(): void
+    {
+        $agent = User::factory()->team(UserRole::FieldAgent)->create(['name' => 'Ana']);
+        Passport::actingAs($agent);
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $launched = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($launched, $this->child, 600))->assertCreated();
+        $this->postJson("/api/admin/sales/{$launched}/launch", ['payments' => [['method' => 'pix', 'amount' => 200]]])->assertOk();
+        LabOrder::where('sale_id', $launched)->update(['status' => 'ready']);
+        $this->newSale(); // rascunho: não entra
+
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/delivery-notices")->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $launched)
+            ->assertJsonPath('data.0.client.name', 'Luiza da Silva Sousa')
+            // Atendente de campo não vê o número: só o mascarado (o WhatsApp abre pelo botão).
+            ->assertJsonPath('data.0.client.phone_number', null)
+            ->assertJsonPath('data.0.client.has_phone', true)
+            ->assertJsonPath('data.0.glasses', 1)
+            ->assertJsonPath('data.0.glasses_ready', 1)
+            ->assertJsonPath('data.0.notified', false);
+
+        $this->putJson("/api/admin/sales/{$launched}/delivery-notice", ['notified' => true, 'notice' => ' Vem buscar sábado '])->assertOk()
+            ->assertJsonPath('data.notified', true)->assertJsonPath('data.notified_by', 'Ana')->assertJsonPath('data.notice', 'Vem buscar sábado');
+        // Só o parecer muda: continua avisado por quem avisou primeiro.
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create(['name' => 'Bia']));
+        $this->putJson("/api/admin/sales/{$launched}/delivery-notice", ['notified' => true, 'notice' => 'Remarcou para segunda'])->assertOk()
+            ->assertJsonPath('data.notified_by', 'Ana')->assertJsonPath('data.notice', 'Remarcou para segunda');
+        $this->putJson("/api/admin/sales/{$launched}/delivery-notice", ['notified' => false, 'notice' => 'Remarcou para segunda'])->assertOk()
+            ->assertJsonPath('data.notified', false)->assertJsonPath('data.notified_by', null);
+        $this->putJson("/api/admin/sales/{$launched}/delivery-notice", ['notice' => 'x'])->assertJsonValidationErrors(['notified']);
+    }
 }

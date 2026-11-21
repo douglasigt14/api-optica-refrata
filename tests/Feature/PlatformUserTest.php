@@ -8,7 +8,9 @@ use App\Models\PlatformAccess;
 use App\Models\User;
 use Database\Seeders\PassportClientSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -105,5 +107,43 @@ class PlatformUserTest extends TestCase
         $token = $this->withToken('token-da-plataforma')->postJson($url)->assertOk()->json('access_token');
         $this->app['auth']->forgetGuards();
         $this->withToken($token)->getJson('/api/admin/me')->assertOk()->assertJsonFragment(['email' => 'maria@royal.com']);
+    }
+
+    public function test_console_logs_out_and_deletes_only_who_never_recorded_anything(): void
+    {
+        $other = '01JD00000000000000000USER9';
+        $this->sendUser()->assertOk();
+        $this->sendUser(['name' => 'Ana', 'email' => 'ana@royal.com'], $other)->assertOk();
+        $maria = User::firstWhere('console_id', self::USER);
+        $ana = User::firstWhere('console_id', $other);
+        $maria->createToken('painel único');
+        $ana->createToken('painel único');
+        $ana->createToken('app');
+        $platform = $this->withToken('token-da-plataforma');
+
+        // Deslogar uma pessoa: só as sessões dela.
+        $platform->postJson('/api/platform/users/'.self::USER.'/logout')->assertOk()->assertJsonPath('data.revoked', 1);
+        $this->assertSame(0, $maria->tokens()->count());
+        $this->assertSame(2, $ana->tokens()->count());
+        $platform->postJson('/api/platform/users/01JD00000000000000000NONE0/logout')->assertOk()->assertJsonPath('data.exists', false);
+
+        // Deslogar o grupo todo, menos quem clicou.
+        $maria->createToken('painel único');
+        $platform->postJson('/api/platform/groups/01JD0000000000000000GROUP1/logout', ['except' => [self::USER]])->assertOk()->assertJsonPath('data.revoked', 2);
+        $this->assertSame(1, $maria->tokens()->count());
+        $this->assertSame(0, $ana->tokens()->count());
+
+        // Apagar: quem já registrou algo, não; quem não registrou, confere (check) e apaga.
+        Schema::disableForeignKeyConstraints();
+        DB::table('phone_reveals')->insert(['company_id' => $this->company->id, 'user_id' => $ana->id, 'subject_type' => 'client', 'subject_id' => 1, 'created_at' => now()]);
+        Schema::enableForeignKeyConstraints();
+        $platform->deleteJson("/api/platform/users/{$other}", ['check' => true])->assertUnprocessable()->assertJsonValidationErrors(['user']);
+        $platform->deleteJson("/api/platform/users/{$other}")->assertUnprocessable();
+        $this->assertTrue(User::whereKey($ana->id)->exists());
+        $platform->deleteJson('/api/platform/users/'.self::USER, ['check' => true])->assertOk()->assertJsonPath('data.deleted', false);
+        $this->assertTrue(User::whereKey($maria->id)->exists());
+        $platform->deleteJson('/api/platform/users/'.self::USER)->assertOk()->assertJsonPath('data.deleted', true);
+        $this->assertFalse(User::whereKey($maria->id)->exists());
+        $platform->deleteJson('/api/platform/users/'.self::USER)->assertOk()->assertJsonPath('data.exists', false);
     }
 }

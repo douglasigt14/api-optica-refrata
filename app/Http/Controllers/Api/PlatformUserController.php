@@ -9,12 +9,14 @@ use App\Models\Company;
 use App\Models\Group;
 use App\Models\User;
 use App\Support\CurrentCompany;
+use App\Support\UserRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Laravel\Passport\Passport;
 
 /**
  * Usuários da equipe vindos do Console (passo 7 do roteiro, token da plataforma). O Console manda a pessoa com as óticas
@@ -130,6 +132,59 @@ class PlatformUserController extends Controller
             'expires_at' => $token->token->expires_at?->toIso8601String(),
             'user' => new SessionUserResource($user),
         ]);
+    }
+
+    /**
+     * "Deslogar" do Console: derruba as sessões da pessoa aqui (painel único, app e painel antigo). Quem não existe
+     * aqui não tem sessão (`exists: false`).
+     */
+    public function logout(string $consoleId): JsonResponse
+    {
+        $user = User::where('console_id', $consoleId)->whereNull('prospector_id')->first();
+
+        return response()->json(['data' => ['exists' => $user !== null, 'revoked' => $user ? $user->tokens()->delete() : 0]]);
+    }
+
+    /**
+     * "Deslogar todo mundo" do grupo, no Console: derruba as sessões de todos os usuários do grupo aqui, menos os de
+     * `except` (IDs do Console; quem clicou).
+     */
+    public function logoutGroup(Request $request, string $groupConsoleId): JsonResponse
+    {
+        $except = $request->validate(['except' => ['present', 'array'], 'except.*' => ['string', 'size:26']])['except'];
+        $group = Group::where('console_id', $groupConsoleId)->first();
+        $ids = $group
+            ? User::where('group_id', $group->id)->whereNull('prospector_id')
+                ->where(fn ($query) => $query->whereNull('console_id')->orWhereNotIn('console_id', $except))
+                ->pluck('id')
+            : collect();
+
+        return response()->json(['data' => ['users' => $ids->count(), 'revoked' => $ids->isEmpty() ? 0 : Passport::token()->whereIn('user_id', $ids)->delete()]]);
+    }
+
+    /**
+     * "Apagar" do Console: só quem nunca registrou nada aqui (senão, desativar). Com `check`, só confere: o Console
+     * confere em todos os sistemas antes de apagar em algum. Quem não existe aqui: `exists: false`.
+     */
+    public function destroy(Request $request, string $consoleId): JsonResponse
+    {
+        $check = $request->boolean('check');
+        $user = User::where('console_id', $consoleId)->whereNull('prospector_id')->first();
+        if (! $user) {
+            return response()->json(['data' => ['exists' => false, 'deleted' => false]]);
+        }
+        $records = UserRecords::of($user);
+        if ($records) {
+            throw ValidationException::withMessages(['user' => "{$user->name} já tem registros na ótica (".UserRecords::describe($records).'): não dá para apagar. Desative no Console']);
+        }
+        if (! $check) {
+            DB::transaction(function () use ($user) {
+                $user->tokens()->delete();
+                $user->delete();
+            });
+        }
+
+        return response()->json(['data' => ['exists' => true, 'deleted' => ! $check]]);
     }
 
     /**

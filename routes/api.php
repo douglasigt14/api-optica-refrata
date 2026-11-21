@@ -33,6 +33,10 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
     // Login único pelo painel único (passo 4): o Console pede o token da pessoa depois de conferir a senha.
     Route::post('/users/{consoleId}/token', [PlatformUserController::class, 'token'])->name('users.token');
     Route::get('/groups/{groupConsoleId}/users', [PlatformUserController::class, 'index'])->name('groups.users');
+    // Console (21/11/2026): deslogar a pessoa ou o grupo todo, e apagar quem nunca registrou nada.
+    Route::post('/users/{consoleId}/logout', [PlatformUserController::class, 'logout'])->name('users.logout');
+    Route::delete('/users/{consoleId}', [PlatformUserController::class, 'destroy'])->name('users.destroy');
+    Route::post('/groups/{groupConsoleId}/logout', [PlatformUserController::class, 'logoutGroup'])->name('groups.logout');
 });
 
 // Aviso de situação dos laboratórios do grupo (passo 3 do roteiro). Chave gravada pelo Console.

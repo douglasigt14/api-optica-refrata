@@ -36,6 +36,7 @@ class Sale extends Model
             'delivered_at' => 'datetime',
             'canceled_at' => 'datetime',
             'financial_synced_at' => 'datetime',
+            'delivery_notified_at' => 'datetime',
         ];
     }
 
@@ -47,6 +48,12 @@ class Sale extends Model
             $this->launched_at !== null => 'launched',
             default => 'draft',
         };
+    }
+
+    /** Quem avisou o cliente de que os óculos chegaram (Notificação de entregas, 21/11/2026). */
+    public function deliveryNotifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'delivery_notified_by');
     }
 
     /** Algum óculos já foi ao laboratório: óculos e valores não mudam mais (nem cancela). */

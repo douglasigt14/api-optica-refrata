@@ -188,6 +188,21 @@ class PlatformUserController extends Controller
     }
 
     /**
+     * Sessões (Console, 21/11/2026): quantos tokens válidos cada usuário do grupo tem aqui (ID do Console => quantidade).
+     */
+    public function sessions(string $groupConsoleId): JsonResponse
+    {
+        $group = Group::where('console_id', $groupConsoleId)->first();
+        $users = $group ? User::where('group_id', $group->id)->whereNull('prospector_id')->whereNotNull('console_id')->pluck('console_id', 'id') : collect();
+        $counts = $users->isEmpty() ? collect() : Passport::token()->newQuery()
+            ->whereIn('user_id', $users->keys())->where('revoked', false)
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->selectRaw('user_id, count(*) as total')->groupBy('user_id')->pluck('total', 'user_id');
+
+        return response()->json(['data' => $counts->mapWithKeys(fn ($total, $userId) => [$users[$userId] => (int) $total])]);
+    }
+
+    /**
      * Só aceita hash bcrypt (o que o Console usa); a senha em texto nunca vem.
      */
     private static function hash(string $hash): string

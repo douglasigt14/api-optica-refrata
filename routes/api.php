@@ -37,6 +37,7 @@ Route::prefix('/platform')->middleware(['platform', 'throttle:120,1'])->name('pl
     Route::post('/users/{consoleId}/logout', [PlatformUserController::class, 'logout'])->name('users.logout');
     Route::delete('/users/{consoleId}', [PlatformUserController::class, 'destroy'])->name('users.destroy');
     Route::post('/groups/{groupConsoleId}/logout', [PlatformUserController::class, 'logoutGroup'])->name('groups.logout');
+    Route::get('/groups/{groupConsoleId}/sessions', [PlatformUserController::class, 'sessions'])->name('groups.sessions');
 });
 
 // Aviso de situação dos laboratórios do grupo (passo 3 do roteiro). Chave gravada pelo Console.

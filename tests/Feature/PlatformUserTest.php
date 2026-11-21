@@ -146,4 +146,17 @@ class PlatformUserTest extends TestCase
         $this->assertFalse(User::whereKey($maria->id)->exists());
         $platform->deleteJson('/api/platform/users/'.self::USER)->assertOk()->assertJsonPath('data.exists', false);
     }
+
+    public function test_console_counts_the_open_sessions_of_the_group(): void
+    {
+        $this->sendUser()->assertOk();
+        $maria = User::firstWhere('console_id', self::USER);
+        $maria->createToken('painel único (web)');
+        $maria->createToken('app único');
+        $maria->createToken('app único')->token->forceFill(['revoked' => true])->save();
+
+        $this->withToken('token-da-plataforma')->getJson('/api/platform/groups/01JD0000000000000000GROUP1/sessions')->assertOk()
+            ->assertExactJson(['data' => [self::USER => 2]]);
+        $this->withToken('token-da-plataforma')->getJson('/api/platform/groups/01JD0000000000000000GROUPX/sessions')->assertOk()->assertExactJson(['data' => []]);
+    }
 }

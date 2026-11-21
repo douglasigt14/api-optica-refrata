@@ -463,4 +463,35 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.notified', false)->assertJsonPath('data.notified_by', null);
         $this->putJson("/api/admin/sales/{$launched}/delivery-notice", ['notice' => 'x'])->assertJsonValidationErrors(['notified']);
     }
+
+    /** Upsell (21/11/2026): tratamentos do catálogo e limpa lentes, com quem vendeu; o relatório do atendimento. */
+    public function test_upsell_is_saved_per_glasses_and_listed_in_the_visit_report(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $sale = $this->newSale();
+        $order = $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->child, 600))->assertCreated()->json('data.id');
+        $other = $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 300))->assertCreated()->json('data.id');
+
+        $this->putJson("/api/admin/lab-orders/{$order}/upsell", ['treatment_ids' => [7], 'lens_cleaner' => 2])->assertJsonValidationErrors(['seller']);
+        $this->putJson("/api/admin/lab-orders/{$order}/upsell", ['treatment_ids' => [99], 'lens_cleaner' => 0, 'seller' => 'Carla'])->assertJsonValidationErrors(['treatment_ids']);
+        $this->putJson("/api/admin/lab-orders/{$order}/upsell", ['treatment_ids' => [7], 'lens_cleaner' => 2, 'seller' => ' Carla '])->assertOk()
+            ->assertJsonPath('data.upsell.treatments', [['id' => 7, 'name' => 'Antirreflexo']])->assertJsonPath('data.upsell.seller', 'Carla');
+        $this->putJson("/api/admin/lab-orders/{$other}/upsell", ['treatment_ids' => [], 'lens_cleaner' => 1, 'seller' => 'carla'])->assertOk();
+        // O total da ficha não muda.
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.total', '900.00')->assertJsonPath('data.orders.0.upsell.lens_cleaner', 2);
+
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/upsells")->assertOk()
+            ->assertJsonCount(2, 'data.upsells')
+            ->assertJsonPath('data.upsells.0.patient', 'Pedro Talisson Silva Santos')
+            ->assertJsonPath('data.upsells.0.buyer', 'Luiza da Silva Sousa')
+            ->assertJsonPath('data.upsells.0.treatments', ['Antirreflexo'])
+            ->assertJsonCount(1, 'data.sellers')
+            ->assertJsonPath('data.sellers.0.glasses', 2)
+            ->assertJsonPath('data.sellers.0.treatments', 1)
+            ->assertJsonPath('data.sellers.0.lens_cleaner', 3);
+
+        // Nada marcado: apaga o upsell.
+        $this->putJson("/api/admin/lab-orders/{$other}/upsell", ['treatment_ids' => [], 'lens_cleaner' => 0, 'seller' => null])->assertOk()->assertJsonPath('data.upsell', null);
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/upsells")->assertJsonCount(1, 'data.upsells');
+    }
 }

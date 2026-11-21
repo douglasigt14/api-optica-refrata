@@ -54,6 +54,8 @@ class LabOrder extends Model
             'status_at' => 'datetime',
             'awaits_frame' => 'boolean',
             'price' => 'decimal:2',
+            'upsell' => 'array',
+            'upsell_at' => 'datetime',
         ];
     }
 

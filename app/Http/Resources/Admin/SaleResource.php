@@ -68,6 +68,8 @@ class SaleResource extends JsonResource
                 'has_prescription' => $order->prescription_path !== null,
                 'has_frame_measures' => empty($order->payload['measure_frame_in_lab'])
                     && collect(['frame_a', 'frame_bridge', 'frame_ed', 'frame_b'])->every(fn (string $key) => filled($order->payload[$key] ?? null)),
+                // Upsell (21/11/2026): tratamentos e limpa lentes vendidos a mais, e quem vendeu.
+                'upsell' => $order->upsell,
                 'created_at' => $order->created_at?->toIso8601String(),
             ])->values(),
             'payments' => $this->payments->map(fn (SalePayment $payment) => [

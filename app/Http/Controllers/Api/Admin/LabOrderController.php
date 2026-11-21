@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Pedidos aos laboratórios do grupo (admin e atendente; passo 3 do roteiro). O pedido é **salvo** e fica "Pendente de
@@ -90,6 +91,14 @@ class LabOrderController extends Controller
     public function show(LabOrder $labOrder): LabOrderResource
     {
         return new LabOrderResource($labOrder->load(['lab', 'client', 'user', 'cityVisit.city']));
+    }
+
+    /** A foto/PDF da receita anexada ao pedido (para ver no painel). */
+    public function prescription(LabOrder $labOrder): StreamedResponse
+    {
+        abort_unless($labOrder->prescription_path && Storage::disk('local')->exists($labOrder->prescription_path), 404);
+
+        return Storage::disk('local')->response($labOrder->prescription_path, headers: ['Cache-Control' => 'private, max-age=86400']);
     }
 
     /**

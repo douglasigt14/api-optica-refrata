@@ -166,6 +166,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
             Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');
             Route::get('/lab-orders/{labOrder}', [Admin\LabOrderController::class, 'show'])->name('lab-orders.show');
+            Route::get('/lab-orders/{labOrder}/prescription', [Admin\LabOrderController::class, 'prescription'])->name('lab-orders.prescription');
             // Editar o pendente: POST (multipart, por causa da receita).
             Route::post('/lab-orders/{labOrder}', [Admin\LabOrderController::class, 'update'])->name('lab-orders.update');
             Route::post('/lab-orders/{labOrder}/send', [Admin\LabOrderController::class, 'send'])->name('lab-orders.send');

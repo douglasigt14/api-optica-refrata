@@ -296,6 +296,7 @@ class LabOrderTest extends TestCase
 
         $order = $this->post('/api/admin/lab-orders', [...$this->order($client), 'prescription' => UploadedFile::fake()->image('receita.jpg')], ['Accept' => 'application/json'])->assertCreated()->json('data');
         $path = LabOrder::find($order['id'])->prescription_path;
+        $this->get("/api/admin/lab-orders/{$order['id']}/prescription")->assertOk()->assertHeader('Content-Type', 'image/jpeg');
 
         // Sem receita nova, a anterior fica; o resto troca (inclusive o atendimento).
         $this->postJson("/api/admin/lab-orders/{$order['id']}", $this->order($other, ['service_place' => 'external', 'city_visit_id' => $visit->id, 'notes' => 'Conferido']))

@@ -44,6 +44,8 @@ class LabOrderResource extends JsonResource
             // Óculos de uma venda (a promissória): a venda e o valor do óculos.
             'sale_id' => $this->sale_id,
             'price' => $this->price,
+            // Upsell (21/11/2026): tratamentos e limpa lentes vendidos a mais, e quem vendeu.
+            'upsell' => $this->upsell,
             'lab_batch' => $this->lab_batch,
             'status' => $this->status,
             'status_label' => $this->sent_at || $this->status === 'canceled' ? $this->status_label : 'Pendente de envio',

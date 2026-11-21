@@ -169,6 +169,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // Notificação de entregas (21/11/2026): avisar os clientes do atendimento, com o parecer e quem já foi avisado.
             Route::get('/lab-order-visits/{cityVisit}/delivery-notices', [Admin\DeliveryNoticeController::class, 'index'])->name('lab-order-visits.delivery-notices');
             Route::put('/sales/{sale}/delivery-notice', [Admin\DeliveryNoticeController::class, 'update'])->name('sales.delivery-notice');
+            // Upsell do óculos e o relatório do atendimento (21/11/2026).
+            Route::put('/lab-orders/{labOrder}/upsell', [Admin\UpsellController::class, 'update'])->name('lab-orders.upsell');
+            Route::get('/lab-order-visits/{cityVisit}/upsells', [Admin\UpsellController::class, 'visit'])->name('lab-order-visits.upsells');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
             Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');

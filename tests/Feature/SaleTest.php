@@ -494,4 +494,39 @@ class SaleTest extends TestCase
         $this->putJson("/api/admin/lab-orders/{$other}/upsell", ['treatment_ids' => [], 'lens_cleaner' => 0, 'seller' => null])->assertOk()->assertJsonPath('data.upsell', null);
         $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/upsells")->assertJsonCount(1, 'data.upsells');
     }
+
+    /** Quem indicou e como conheceu (23/11/2026): só os óculos vendidos (ficha lançada), pelo cliente da ficha. */
+    public function test_referral_report_lists_sold_glasses_by_the_buyer(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->mother->update(['referred_by' => 'Dona Maria', 'referral_source' => 'partner']);
+        $neighbor = Client::create(['name' => 'Ana Vizinha', 'phone_number' => '88999990000', 'address' => 'Rua A', 'city_id' => $this->city->id, 'referred_by' => ' dona maria ', 'referral_source' => 'instagram']);
+
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->child, 600))->assertCreated();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 300))->assertCreated();
+        $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => []])->assertOk();
+        $other = $this->newSale(['client_id' => $neighbor->id]);
+        $this->postJson('/api/admin/lab-orders', $this->glasses($other, $neighbor, 400))->assertCreated();
+        $this->postJson("/api/admin/sales/{$other}/launch", ['payments' => []])->assertOk();
+        // Rascunho não é venda: fica de fora.
+        $draft = $this->newSale(['client_id' => $this->child->id]);
+        $this->postJson('/api/admin/lab-orders', $this->glasses($draft, $this->child, 500))->assertCreated();
+
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/referrals")->assertOk()
+            ->assertJsonCount(3, 'data.glasses')
+            ->assertJsonPath('data.clients', 2)
+            ->assertJsonPath('data.without_referrer', 0)
+            ->assertJsonPath('data.glasses.0.buyer.name', 'Luiza da Silva Sousa')
+            ->assertJsonPath('data.glasses.0.patient', 'Pedro Talisson Silva Santos')
+            ->assertJsonPath('data.glasses.0.referral_source', 'partner')
+            ->assertJsonPath('data.sources.0.source', 'instagram')
+            ->assertJsonPath('data.sources.0.glasses', 1)
+            ->assertJsonPath('data.sources.1.glasses', 2)
+            ->assertJsonPath('data.sources.1.clients', 1)
+            ->assertJsonCount(1, 'data.referrers')
+            ->assertJsonPath('data.referrers.0.name', 'Dona Maria')
+            ->assertJsonPath('data.referrers.0.glasses', 3)
+            ->assertJsonPath('data.referrers.0.clients', ['Luiza da Silva Sousa', 'Ana Vizinha']);
+    }
 }

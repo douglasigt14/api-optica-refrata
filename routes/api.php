@@ -173,6 +173,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // Upsell do óculos e o relatório do atendimento (21/11/2026).
             Route::put('/lab-orders/{labOrder}/upsell', [Admin\UpsellController::class, 'update'])->name('lab-orders.upsell');
             Route::get('/lab-order-visits/{cityVisit}/upsells', [Admin\UpsellController::class, 'visit'])->name('lab-order-visits.upsells');
+            // Quem indicou e como conheceu (23/11/2026): dos óculos vendidos no atendimento, pelo cliente da ficha.
+            Route::get('/lab-order-visits/{cityVisit}/referrals', [Admin\ReferralReportController::class, 'visit'])->name('lab-order-visits.referrals');
             Route::post('/lab-orders', [Admin\LabOrderController::class, 'store'])->name('lab-orders.store');
             // Enviar os pendentes marcados (antes de {labOrder}, para "send" não virar id).
             Route::post('/lab-orders/send', [Admin\LabOrderController::class, 'sendMany'])->name('lab-orders.send-many');

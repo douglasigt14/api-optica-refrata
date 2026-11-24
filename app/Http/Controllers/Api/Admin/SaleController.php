@@ -140,7 +140,8 @@ class SaleController extends Controller
             $rows[] = [
                 'id' => $sale->id,
                 'status' => $status,
-                'client' => $sale->client ? ['id' => $sale->client->id, 'name' => $sale->client->name, 'cpf' => $sale->client->cpf] : null,
+                // Telefone no relatório de entregas (24/11/2026): inteiro para todos, sem o sigilo do CRM (o entregador precisa ligar).
+                'client' => $sale->client ? ['id' => $sale->client->id, 'name' => $sale->client->name, 'cpf' => $sale->client->cpf, 'phone_number' => $sale->client->phone_number] : null,
                 'glasses' => $sale->activeOrders()->count(),
                 // Óculos da ficha no relatório impresso (24/11/2026): quem usa e o valor de cada um (formam o total).
                 'orders' => $sale->activeOrders()->map(fn (LabOrder $order) => [

@@ -148,6 +148,8 @@ class SaleController extends Controller
                     'number' => $order->number,
                     'patient' => $order->client?->name,
                     'price' => $order->price,
+                    // Limpa lentes vendidos no upsell (24/11/2026): o entregador leva junto.
+                    'lens_cleaner' => (int) ($order->upsell['lens_cleaner'] ?? 0),
                 ])->values(),
                 'total' => $money($sale->totalCents()),
                 'paid' => $money($sale->paidCents()),

@@ -175,6 +175,7 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.sales.0.id', $launched)
             ->assertJsonPath('data.sales.0.orders.0.patient', $this->mother->name)
             ->assertJsonPath('data.sales.0.orders.0.price', '600.00')
+            ->assertJsonPath('data.sales.0.orders.0.lens_cleaner', 0)
             ->assertJsonPath('data.sales.0.client.phone_number', $this->mother->phone_number)
             ->assertJsonPath('data.sales.0.paid', '300.00')
             ->assertJsonPath('data.sales.0.remaining', '300.00')
@@ -508,6 +509,8 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.sellers.0.glasses', 2)
             ->assertJsonPath('data.sellers.0.treatments', 1)
             ->assertJsonPath('data.sellers.0.lens_cleaner', 3);
+        // Relatório de entregas (24/11/2026): os limpa lentes de cada óculos, para levar junto.
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/sales-report")->assertJsonPath('data.sales.0.orders.0.lens_cleaner', 2)->assertJsonPath('data.sales.0.orders.1.lens_cleaner', 1);
 
         // Nada marcado: apaga o upsell.
         $this->putJson("/api/admin/lab-orders/{$other}/upsell", ['treatment_ids' => [], 'lens_cleaner' => 0, 'seller' => null])->assertOk()->assertJsonPath('data.upsell', null);

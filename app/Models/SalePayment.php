@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -31,15 +32,33 @@ class SalePayment extends Model
      * O tipo na lista da ficha (09/11/2026): `financial` (baixa feita no Financeiro), `delivery` (na entrega), `down`
      * (entrada, paga ao lançar) ou `extra` (avulso, depois de lançar). Entrada e avulso têm o mesmo `stage`; o que separa
      * é ter sido gravado junto com o lançamento.
+     *
+     * Entrada apagada (24/11/2026), por exemplo por erro de digitação: se nenhum pagamento do lançamento sobrou, a entrada
+     * passa a ser o primeiro pagamento feito depois (com os que forem gravados junto com ele, até 5 segundos depois).
      */
     public function kind(Sale $sale): string
     {
         return match (true) {
             $this->from_financial => 'financial',
             $this->stage === 'delivery' => 'delivery',
-            $sale->launched_at !== null && $this->created_at !== null && $this->created_at->lte($sale->launched_at->copy()->addSeconds(5)) => 'down',
-            default => 'extra',
+            default => ($at = self::downPaymentTime($sale)) && $this->created_at && $this->created_at->lte($at->copy()->addSeconds(5)) ? 'down' : 'extra',
         };
+    }
+
+    /** Até quando um pagamento conta como entrada: o lançamento ou, sem pagamento dele, o primeiro pagamento depois. */
+    private static function downPaymentTime(Sale $sale): ?CarbonInterface
+    {
+        if (! $sale->launched_at) {
+            return null;
+        }
+        $first = $sale->payments
+            ->filter(fn (self $payment) => ! $payment->from_financial && $payment->stage !== 'delivery' && $payment->created_at)
+            ->min(fn (self $payment) => $payment->created_at);
+        if (! $first || $first->lte($sale->launched_at->copy()->addSeconds(5))) {
+            return $sale->launched_at;
+        }
+
+        return $first;
     }
 
     /** @return BelongsTo<Sale, $this> */

@@ -175,6 +175,7 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.sales.0.id', $launched)
             ->assertJsonPath('data.sales.0.orders.0.patient', $this->mother->name)
             ->assertJsonPath('data.sales.0.orders.0.price', '600.00')
+            ->assertJsonPath('data.sales.0.client.phone_number', $this->mother->phone_number)
             ->assertJsonPath('data.sales.0.paid', '300.00')
             ->assertJsonPath('data.sales.0.remaining', '300.00')
             ->assertJsonPath('data.sales.0.payments.1.method_label', 'Cartão')

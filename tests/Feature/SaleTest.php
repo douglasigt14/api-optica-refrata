@@ -551,4 +551,29 @@ class SaleTest extends TestCase
             ->assertJsonPath('data.referrers.0.glasses', 3)
             ->assertJsonPath('data.referrers.0.clients', ['Luiza da Silva Sousa', 'Ana Vizinha']);
     }
+
+    /** Exames (24/11/2026): o cadastro (o admin mexe) e os de interesse na ficha, fora do total; aparecem no relatório de entregas. */
+    public function test_exams_are_registered_and_marked_on_the_sale_without_changing_the_total(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->postJson('/api/admin/exams', ['name' => 'Retinografia', 'price' => 80])->assertForbidden();
+
+        Passport::actingAs(User::factory()->team(UserRole::Admin)->create());
+        $exam = $this->postJson('/api/admin/exams', ['name' => 'Retinografia', 'price' => 80])->assertCreated()->json('data.id');
+        $this->getJson('/api/admin/exams')->assertOk()->assertJsonPath('data.0.name', 'Retinografia')->assertJsonPath('data.0.price', '80.00');
+
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 600))->assertCreated();
+        $this->putJson("/api/admin/sales/{$sale}/exams", ['exam_ids' => [999]])->assertJsonValidationErrors(['exam_ids']);
+        $this->putJson("/api/admin/sales/{$sale}/exams", ['exam_ids' => [$exam]])->assertOk()
+            ->assertJsonPath('data.exams.0.name', 'Retinografia')->assertJsonPath('data.exams.0.price', '80.00')->assertJsonPath('data.total', '600.00');
+
+        // Mudar ou apagar no cadastro não mexe na ficha.
+        $this->patchJson("/api/admin/exams/{$exam}", ['name' => 'Retinografia digital', 'price' => 90])->assertOk();
+        $this->deleteJson("/api/admin/exams/{$exam}")->assertNoContent();
+        $this->getJson("/api/admin/sales/{$sale}")->assertJsonPath('data.exams.0.name', 'Retinografia');
+        $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/sales-report")->assertJsonPath('data.sales.0.exams', ['Retinografia']);
+
+        $this->putJson("/api/admin/sales/{$sale}/exams", ['exam_ids' => []])->assertOk()->assertJsonPath('data.exams', []);
+    }
 }

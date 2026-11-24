@@ -37,6 +37,8 @@ class Sale extends Model
             'canceled_at' => 'datetime',
             'financial_synced_at' => 'datetime',
             'delivery_notified_at' => 'datetime',
+            // Exames de interesse (24/11/2026): [{id, name, price}], feitos na entrega; fora do total.
+            'exams' => 'array',
         ];
     }
 

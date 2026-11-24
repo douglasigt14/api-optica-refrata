@@ -153,6 +153,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/sales/{sale}/deliver', [Admin\SaleController::class, 'deliver'])->name('sales.deliver');
             // Cancelar ficha: o atendente também (12/11/2026).
             Route::post('/sales/{sale}/cancel', [Admin\SaleController::class, 'cancel'])->name('sales.cancel');
+            // Exames (24/11/2026): o cadastro (todos veem; o admin mexe, abaixo) e os de interesse da ficha, feitos na entrega.
+            Route::get('/exams', [Admin\ExamController::class, 'index'])->name('exams.index');
+            Route::put('/sales/{sale}/exams', [Admin\ExamController::class, 'sale'])->name('sales.exams');
             // Pedidos por atendimento (07/11/2026): os atendimentos que recebem pedidos, enviar todos juntos e encerrar.
             Route::get('/lab-order-visits', [Admin\LabOrderController::class, 'visits'])->name('lab-order-visits.index');
             Route::get('/lab-order-visits/{cityVisit}', [Admin\LabOrderController::class, 'visit'])->name('lab-order-visits.show');
@@ -191,6 +194,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // Parte financeira do Dashboard (19/11/2026): só o admin recebe os valores.
             Route::get('/dashboard/financial', Admin\FinancialDashboardController::class)->name('dashboard.financial');
             Route::delete('/clients/{client}', [Admin\ClientController::class, 'destroy'])->name('clients.destroy');
+            Route::post('/exams', [Admin\ExamController::class, 'store'])->name('exams.store');
+            Route::patch('/exams/{exam}', [Admin\ExamController::class, 'update'])->name('exams.update');
+            Route::delete('/exams/{exam}', [Admin\ExamController::class, 'destroy'])->name('exams.destroy');
             // Configurações ▸ WhatsApp (CRM, 12/11/2026): números (QR Code), modelos de mensagem e disparo (só com a API oficial).
             Route::get('/whatsapp/numbers', [Admin\WhatsAppNumberController::class, 'index'])->name('whatsapp.numbers.index');
             Route::post('/whatsapp/numbers', [Admin\WhatsAppNumberController::class, 'store'])->name('whatsapp.numbers.store');

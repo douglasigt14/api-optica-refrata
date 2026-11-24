@@ -151,6 +151,8 @@ class SaleController extends Controller
                     // Limpa lentes vendidos no upsell (24/11/2026): o entregador leva junto.
                     'lens_cleaner' => (int) ($order->upsell['lens_cleaner'] ?? 0),
                 ])->values(),
+                // Exames de interesse (24/11/2026): feitos na entrega.
+                'exams' => array_column($sale->exams ?? [], 'name'),
                 'total' => $money($sale->totalCents()),
                 'paid' => $money($sale->paidCents()),
                 // Na entrega: o que falta das lançadas (entregue = 0; rascunho e cancelada não têm).

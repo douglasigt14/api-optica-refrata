@@ -108,7 +108,7 @@ class SaleController extends Controller
     public function visitReport(CityVisit $cityVisit): JsonResponse
     {
         $cityVisit->load('city');
-        $sales = Sale::query()->where('city_visit_id', $cityVisit->id)->with(['client', 'orders', 'payments'])->orderBy('id')->get();
+        $sales = Sale::query()->where('city_visit_id', $cityVisit->id)->with(['client', 'orders.client', 'payments'])->orderBy('id')->get();
         // Baixas feitas no Financeiro entram antes de somar (09/11/2026).
         if ($this->financial->pull($sales)) {
             $sales->each->load('payments');
@@ -142,6 +142,12 @@ class SaleController extends Controller
                 'status' => $status,
                 'client' => $sale->client ? ['id' => $sale->client->id, 'name' => $sale->client->name, 'cpf' => $sale->client->cpf] : null,
                 'glasses' => $sale->activeOrders()->count(),
+                // Óculos da ficha no relatório impresso (24/11/2026): quem usa e o valor de cada um (formam o total).
+                'orders' => $sale->activeOrders()->map(fn (LabOrder $order) => [
+                    'number' => $order->number,
+                    'patient' => $order->client?->name,
+                    'price' => $order->price,
+                ])->values(),
                 'total' => $money($sale->totalCents()),
                 'paid' => $money($sale->paidCents()),
                 // Na entrega: o que falta das lançadas (entregue = 0; rascunho e cancelada não têm).

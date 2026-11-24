@@ -239,6 +239,22 @@ class SaleTest extends TestCase
         $this->getJson("/api/admin/lab-order-visits/{$this->visit->id}/sales-report")->assertJsonPath('data.sales.0.payments.1.kind', 'extra');
     }
 
+    /** Entrada apagada (erro de digitação): o próximo pagamento vira a entrada; os seguintes, avulsos (24/11/2026). */
+    public function test_a_payment_after_the_down_payment_is_removed_becomes_the_down_payment(): void
+    {
+        Passport::actingAs(User::factory()->team(UserRole::FieldAgent)->create());
+        $this->company->update(['sale_accounts' => ['pix' => 2, 'card' => 2, 'cash' => 1]]);
+        $sale = $this->newSale();
+        $this->postJson('/api/admin/lab-orders', $this->glasses($sale, $this->mother, 600))->assertCreated();
+        $payment = $this->postJson("/api/admin/sales/{$sale}/launch", ['payments' => [['method' => 'pix', 'amount' => 200]]])->assertOk()->json('data.payments.0.id');
+        $this->deleteJson("/api/admin/sales/{$sale}/payments/{$payment}")->assertOk()->assertJsonCount(0, 'data.payments');
+        $this->travel(1)->minutes();
+        $this->postJson("/api/admin/sales/{$sale}/payments", ['method' => 'pix', 'amount' => 20])->assertOk()->assertJsonPath('data.payments.0.kind', 'down');
+        $this->travel(1)->minutes();
+        $this->postJson("/api/admin/sales/{$sale}/payments", ['method' => 'cash', 'amount' => 50])
+            ->assertOk()->assertJsonPath('data.payments.0.kind', 'down')->assertJsonPath('data.payments.1.kind', 'extra');
+    }
+
     /** Baixa de lá estornada antes de voltar: sai da ficha. Financeiro fora do ar: a ficha abre com o que tem. */
     public function test_a_financial_payment_reversed_there_leaves_the_sale(): void
     {

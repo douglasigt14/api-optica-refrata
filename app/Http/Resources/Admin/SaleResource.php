@@ -34,7 +34,9 @@ class SaleResource extends JsonResource
                 'id' => $this->client->id,
                 'name' => $this->client->name,
                 'cpf' => $this->client->cpf,
+                // Telefone inteiro na ficha (24/11/2026, pedido do Douglas: a ficha impressa não esconde o número).
                 ...PhonePrivacy::fields($this->client->phone_number, $request),
+                'phone_number' => $this->client->phone_number,
                 'address' => $this->client->address,
                 'city' => $this->client->city?->name,
             ] : null,
@@ -42,6 +44,8 @@ class SaleResource extends JsonResource
             // Ficha do atendimento: a data é a do atendimento (troca-se lá); só a da loja edita a sua.
             'delivery_from_visit' => $this->city_visit_id !== null,
             'notes' => $this->notes,
+            // Exames de interesse (24/11/2026), feitos na entrega; não entram no total.
+            'exams' => $this->exams ?? [],
             'orders' => $this->orders->map(fn (LabOrder $order) => [
                 'id' => $order->id,
                 'number' => $order->number,
